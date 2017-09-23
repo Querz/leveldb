@@ -663,7 +663,7 @@ public class DbImplTest
         assertTrue(db.numberOfFilesInLevel(0) > 0);
 
         assertEquals(big, db.get("foo", snapshot));
-        assertBetween(db.size("", "pastFoo"), 50000, 60000);
+        assertBetween(db.size("", "pastFoo"), 40000, 50000);
         snapshot.close();
         assertEquals(db.allEntriesFor("foo"), asList("tiny", big));
         db.compactRange(0, "", "x");
