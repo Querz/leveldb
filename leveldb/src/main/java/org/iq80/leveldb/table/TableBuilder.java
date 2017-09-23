@@ -21,10 +21,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import org.iq80.leveldb.CompressionType;
 import org.iq80.leveldb.Options;
-import org.iq80.leveldb.util.PureJavaCrc32C;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.Slices;
-import org.iq80.leveldb.util.Snappy;
+import org.iq80.leveldb.util.*;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -171,7 +168,21 @@ public class TableBuilder
         // attempt to compress the block
         Slice blockContents = raw;
         CompressionType blockCompressionType = CompressionType.NONE;
-        if (compressionType == CompressionType.SNAPPY) {
+        if (compressionType == CompressionType.ZLIB) {
+            ensureCompressedOutputCapacity(maxCompressedLength(raw.length()));
+            try {
+                int compressedSize = Zlib.compress(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
+
+                // Don't use the compressed data if compressed less than 12.5%,
+                if (compressedSize < raw.length() - (raw.length() / 8)) {
+                    blockContents = compressedOutput.slice(0, compressedSize);
+                    blockCompressionType = CompressionType.ZLIB;
+                }
+            }
+            catch (IOException ignored) {
+                // compression failed, so just store uncompressed form
+            }
+        } else if (compressionType == CompressionType.SNAPPY) {
             ensureCompressedOutputCapacity(maxCompressedLength(raw.length()));
             try {
                 int compressedSize = Snappy.compress(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
