@@ -107,7 +107,16 @@ public class MMapTable
         // decompress data
         Slice uncompressedData;
         ByteBuffer uncompressedBuffer = read(this.data, (int) blockHandle.getOffset(), blockHandle.getDataSize());
-        if (blockTrailer.getCompressionType() == ZLIB) {
+        if (blockTrailer.getCompressionType() == ZLIB_RAW) {
+            synchronized (MMapTable.class) {
+                // Shit on the scratch buffer. for it to work i would need to guess maximum uncompressed data length
+                // instead i can simply use a byte array output stream which reallocs the internal memory buffer if needed
+                ByteArrayOutputStream stream = new ByteArrayOutputStream( blockHandle.getDataSize() * 5 );
+                Zlib.uncompressRaw(uncompressedBuffer, stream);
+                uncompressedData = Slices.wrappedBuffer(stream.toByteArray());
+            }
+        }
+        else if (blockTrailer.getCompressionType() == ZLIB) {
             synchronized (MMapTable.class) {
                 // Shit on the scratch buffer. for it to work i would need to guess maximum uncompressed data length
                 // instead i can simply use a byte array output stream which reallocs the internal memory buffer if needed

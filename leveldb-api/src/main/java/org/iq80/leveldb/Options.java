@@ -27,7 +27,7 @@ public class Options
 
     private int blockRestartInterval = 16;
     private int blockSize = 4 * 1024;
-    private CompressionType compressionType = CompressionType.ZLIB;
+    private CompressionType compressionType = CompressionType.ZLIB_RAW;
     private boolean verifyChecksums = true;
     private boolean paranoidChecks;
     private DBComparator comparator;

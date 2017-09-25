@@ -87,7 +87,8 @@ public class DbImpl
         Preconditions.checkNotNull( databaseDir, "databaseDir is null" );
         this.options = options;
 
-        if ( this.options.compressionType() == CompressionType.ZLIB && !Zlib.available() ) {
+        if ( ( this.options.compressionType() == CompressionType.ZLIB ||
+                this.options.compressionType() == CompressionType.ZLIB_RAW ) && !Zlib.available() ) {
             // There's little hope to continue.
             this.options.compressionType( CompressionType.NONE );
         }
