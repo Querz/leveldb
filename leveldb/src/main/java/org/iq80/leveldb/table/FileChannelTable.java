@@ -22,6 +22,7 @@ import org.iq80.leveldb.util.Slices;
 import org.iq80.leveldb.util.Snappy;
 import org.iq80.leveldb.util.Zlib;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -73,14 +74,9 @@ public class FileChannelTable
         Slice uncompressedData;
         if (blockTrailer.getCompressionType() == ZLIB) {
             synchronized (FileChannelTable.class) {
-                int uncompressedLength = uncompressedLength(uncompressedBuffer);
-                if (uncompressedScratch.capacity() < uncompressedLength) {
-                    uncompressedScratch = ByteBuffer.allocateDirect(uncompressedLength);
-                }
-                uncompressedScratch.clear();
-
-                Zlib.uncompress(uncompressedBuffer, uncompressedScratch);
-                uncompressedData = Slices.copiedBuffer(uncompressedScratch);
+                ByteArrayOutputStream stream = new ByteArrayOutputStream( blockHandle.getDataSize() * 5 );
+                Zlib.uncompress(uncompressedBuffer, stream);
+                uncompressedData = Slices.wrappedBuffer(stream.toByteArray());
             }
         }
         else if (blockTrailer.getCompressionType() == SNAPPY) {
