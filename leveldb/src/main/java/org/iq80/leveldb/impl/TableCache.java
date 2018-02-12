@@ -35,6 +35,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 public class TableCache
@@ -108,6 +109,12 @@ public class TableCache
     public void evict(long number)
     {
         cache.invalidate(number);
+    }
+
+    public void clearBlockCaches() {
+        for ( Map.Entry<Long, TableAndFile> longTableAndFileEntry : cache.asMap().entrySet() ) {
+            longTableAndFileEntry.getValue().getTable().clearBlockCache();
+        }
     }
 
     private static final class TableAndFile

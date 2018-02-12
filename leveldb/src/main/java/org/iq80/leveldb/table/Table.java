@@ -19,6 +19,9 @@ package org.iq80.leveldb.table;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import org.iq80.leveldb.impl.SeekingIterable;
 import org.iq80.leveldb.util.Closeables;
 import org.iq80.leveldb.util.Slice;
@@ -31,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Comparator;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 
 public abstract class Table
         implements SeekingIterable<Slice, Slice>
@@ -41,6 +45,25 @@ public abstract class Table
     protected final boolean verifyChecksums;
     protected final Block indexBlock;
     protected final BlockHandle metaindexBlockHandle;
+
+    private LoadingCache<BlockHandle, Block> blockCache = CacheBuilder
+            .newBuilder()
+            .maximumSize( 1000 )
+            .build( new CacheLoader<BlockHandle, Block>() {
+                @Override
+                public Block load( BlockHandle blockHandle ) throws Exception {
+                    Block dataBlock;
+
+                    try {
+                        dataBlock = readBlock(blockHandle);
+                    }
+                    catch (IOException e) {
+                        throw Throwables.propagate(e);
+                    }
+
+                    return dataBlock;
+                }
+            } );
 
     public Table(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
             throws IOException
@@ -73,14 +96,11 @@ public abstract class Table
     public Block openBlock(Slice blockEntry)
     {
         BlockHandle blockHandle = BlockHandle.readBlockHandle(blockEntry.input());
-        Block dataBlock;
         try {
-            dataBlock = readBlock(blockHandle);
+            return blockCache.get( blockHandle );
+        } catch ( ExecutionException e ) {
+            throw Throwables.propagate( e );
         }
-        catch (IOException e) {
-            throw Throwables.propagate(e);
-        }
-        return dataBlock;
     }
 
     protected static ByteBuffer uncompressedScratch = ByteBuffer.allocateDirect(4 * 1024 * 1024);
@@ -133,6 +153,10 @@ public abstract class Table
     public Callable<?> closer()
     {
         return new Closer(fileChannel);
+    }
+
+    public void clearBlockCache() {
+        blockCache.invalidateAll();
     }
 
     private static class Closer

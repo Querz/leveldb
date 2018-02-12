@@ -625,6 +625,10 @@ public class DbImpl
     public Snapshot writeInternal( WriteBatchImpl updates, WriteOptions options )
             throws DBException {
         checkBackgroundException();
+
+        // Kill the internal table block caches
+        tableCache.clearBlockCaches();
+
         mutex.lock();
         try {
             long sequenceEnd;
