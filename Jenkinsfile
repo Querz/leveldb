@@ -1,16 +1,32 @@
 pipeline {
-  agent {
-    docker {
-      image 'maven:3'
-      args '-v /root/.m2/:/root/.m2/'
+
+    agent any
+
+    tools {
+        maven 'Maven 3'
+        jdk 'Java 8'
     }
-    
-  }
-  stages {
-    stage('Build') {
-      steps {
-        sh 'mvn -B clean install'
-      }
+
+    stages {
+        stage ('Build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage ('Deploy') {
+            when {
+                branch "master"
+            }
+            steps {
+                sh 'mvn javadoc:jar source:jar deploy -DskipTests'
+            }
+        }
     }
-  }
+
+    post {
+        always {
+            deleteDir()
+        }
+    }
 }
