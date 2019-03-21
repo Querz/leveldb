@@ -25,13 +25,11 @@ import java.util.Map.Entry;
 import static com.google.common.base.Charsets.UTF_8;
 
 public class InternalEntry
-        implements Entry<InternalKey, Slice>
-{
+        implements Entry<InternalKey, Slice> {
     private final InternalKey key;
     private final Slice value;
 
-    public InternalEntry(InternalKey key, Slice value)
-    {
+    public InternalEntry(InternalKey key, Slice value) {
         Preconditions.checkNotNull(key, "key is null");
         Preconditions.checkNotNull(value, "value is null");
         this.key = key;
@@ -39,14 +37,12 @@ public class InternalEntry
     }
 
     @Override
-    public InternalKey getKey()
-    {
+    public InternalKey getKey() {
         return key;
     }
 
     @Override
-    public Slice getValue()
-    {
+    public Slice getValue() {
         return value;
     }
 
@@ -54,14 +50,12 @@ public class InternalEntry
      * @throws UnsupportedOperationException always
      */
     @Override
-    public final Slice setValue(Slice value)
-    {
+    public final Slice setValue(Slice value) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public boolean equals(Object o)
-    {
+    public boolean equals(Object o) {
         if (this == o) {
             return true;
         }
@@ -82,16 +76,14 @@ public class InternalEntry
     }
 
     @Override
-    public int hashCode()
-    {
+    public int hashCode() {
         int result = key.hashCode();
         result = 31 * result + value.hashCode();
         return result;
     }
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append("InternalEntry");
         sb.append("{key=").append(key);      // todo don't print the real value

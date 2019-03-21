@@ -37,43 +37,50 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 import static org.testng.FileAssert.fail;
 
-public class LogTest
-{
-    private static final LogMonitor NO_CORRUPTION_MONITOR = new LogMonitor()
-    {
+public class LogTest {
+    private static final LogMonitor NO_CORRUPTION_MONITOR = new LogMonitor() {
         @Override
-        public void corruption(long bytes, String reason)
-        {
+        public void corruption(long bytes, String reason) {
             fail(String.format("corruption of %s bytes: %s", bytes, reason));
         }
 
         @Override
-        public void corruption(long bytes, Throwable reason)
-        {
+        public void corruption(long bytes, Throwable reason) {
             throw new RuntimeException(String.format("corruption of %s bytes: %s", bytes, reason), reason);
         }
     };
 
     private LogWriter writer;
 
+    static Slice toSlice(String value) {
+        return toSlice(value, 1);
+    }
+
+    static Slice toSlice(String value, int times) {
+        byte[] bytes = value.getBytes(UTF_8);
+        Slice slice = Slices.allocate(bytes.length * times);
+        SliceOutput sliceOutput = slice.output();
+        for (int i = 0; i < times; i++) {
+            sliceOutput.writeBytes(bytes);
+        }
+        return slice;
+    }
+
     @Test
     public void testEmptyBlock()
-            throws Exception
-    {
+            throws Exception {
         testLog();
     }
 
     @Test
     public void testSmallRecord()
-            throws Exception
-    {
+            throws Exception {
         testLog(toSlice("dain sundstrom"));
     }
 
     @Test
     public void testMultipleSmallRecords()
-            throws Exception
-    {
+            throws Exception {
         List<Slice> records = asList(
                 toSlice("Lagunitas  Little Sumpin’ Sumpin’"),
                 toSlice("Lagunitas IPA"),
@@ -87,15 +94,13 @@ public class LogTest
 
     @Test
     public void testLargeRecord()
-            throws Exception
-    {
+            throws Exception {
         testLog(toSlice("dain sundstrom", 4000));
     }
 
     @Test
     public void testMultipleLargeRecords()
-            throws Exception
-    {
+            throws Exception {
         List<Slice> records = asList(
                 toSlice("Lagunitas  Little Sumpin’ Sumpin’", 4000),
                 toSlice("Lagunitas IPA", 4000),
@@ -109,26 +114,22 @@ public class LogTest
 
     @Test
     public void testReadWithoutProperClose()
-            throws Exception
-    {
+            throws Exception {
         testLog(ImmutableList.of(toSlice("something"), toSlice("something else")), false);
     }
 
     private void testLog(Slice... entries)
-            throws IOException
-    {
+            throws IOException {
         testLog(asList(entries));
     }
 
     private void testLog(List<Slice> records)
-            throws IOException
-    {
+            throws IOException {
         testLog(records, true);
     }
 
     private void testLog(List<Slice> records, boolean closeWriter)
-            throws IOException
-    {
+            throws IOException {
         for (Slice entry : records) {
             writer.addRecord(entry, false);
         }
@@ -140,7 +141,7 @@ public class LogTest
         // test readRecord
 
         try (FileInputStream fis = new FileInputStream(writer.getFile());
-                FileChannel fileChannel = fis.getChannel()) {
+             FileChannel fileChannel = fis.getChannel()) {
             LogReader reader = new LogReader(fileChannel, NO_CORRUPTION_MONITOR, true, 0);
             for (Slice expected : records) {
                 Slice actual = reader.readRecord();
@@ -152,33 +153,15 @@ public class LogTest
 
     @BeforeMethod
     public void setUp()
-            throws Exception
-    {
+            throws Exception {
         writer = Logs.createLogWriter(File.createTempFile("table", ".log"), 42);
     }
 
     @AfterMethod
     public void tearDown()
-            throws Exception
-    {
+            throws Exception {
         if (writer != null) {
             writer.delete();
         }
-    }
-
-    static Slice toSlice(String value)
-    {
-        return toSlice(value, 1);
-    }
-
-    static Slice toSlice(String value, int times)
-    {
-        byte[] bytes = value.getBytes(UTF_8);
-        Slice slice = Slices.allocate(bytes.length * times);
-        SliceOutput sliceOutput = slice.output();
-        for (int i = 0; i < times; i++) {
-            sliceOutput.writeBytes(bytes);
-        }
-        return slice;
     }
 }

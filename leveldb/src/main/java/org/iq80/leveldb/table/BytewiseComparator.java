@@ -20,25 +20,21 @@ package org.iq80.leveldb.table;
 import org.iq80.leveldb.util.Slice;
 
 public class BytewiseComparator
-        implements UserComparator
-{
+        implements UserComparator {
     @Override
-    public String name()
-    {
+    public String name() {
         return "leveldb.BytewiseComparator";
     }
 
     @Override
-    public int compare(Slice sliceA, Slice sliceB)
-    {
+    public int compare(Slice sliceA, Slice sliceB) {
         return sliceA.compareTo(sliceB);
     }
 
     @Override
     public Slice findShortestSeparator(
             Slice start,
-            Slice limit)
-    {
+            Slice limit) {
         // Find length of common prefix
         int sharedBytes = BlockBuilder.calculateSharedBytes(start, limit);
 
@@ -59,8 +55,7 @@ public class BytewiseComparator
     }
 
     @Override
-    public Slice findShortSuccessor(Slice key)
-    {
+    public Slice findShortSuccessor(Slice key) {
         // Find first character that can be incremented
         for (int i = 0; i < key.length(); i++) {
             int b = key.getUnsignedByte(i);

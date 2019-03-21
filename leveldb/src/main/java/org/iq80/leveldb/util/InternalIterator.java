@@ -26,6 +26,5 @@ import org.iq80.leveldb.impl.SeekingIterator;
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
 public interface InternalIterator
-        extends SeekingIterator<InternalKey, Slice>
-{
+        extends SeekingIterator<InternalKey, Slice> {
 }

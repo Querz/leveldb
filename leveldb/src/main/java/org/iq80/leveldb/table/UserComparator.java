@@ -23,8 +23,7 @@ import java.util.Comparator;
 
 // todo this interface needs more thought
 public interface UserComparator
-        extends Comparator<Slice>
-{
+        extends Comparator<Slice> {
     String name();
 
     Slice findShortestSeparator(Slice start, Slice limit);

@@ -27,21 +27,18 @@ import java.nio.charset.Charset;
 
 public final class SliceInput
         extends InputStream
-        implements DataInput
-{
+        implements DataInput {
     private final Slice slice;
     private int position;
 
-    public SliceInput(Slice slice)
-    {
+    public SliceInput(Slice slice) {
         this.slice = slice;
     }
 
     /**
      * Returns the {@code position} of this buffer.
      */
-    public int position()
-    {
+    public int position() {
         return position;
     }
 
@@ -49,11 +46,10 @@ public final class SliceInput
      * Sets the {@code position} of this buffer.
      *
      * @throws IndexOutOfBoundsException if the specified {@code position} is
-     * less than {@code 0} or
-     * greater than {@code this.writerIndex}
+     *                                   less than {@code 0} or
+     *                                   greater than {@code this.writerIndex}
      */
-    public void setPosition(int position)
-    {
+    public void setPosition(int position) {
         if (position < 0 || position > slice.length()) {
             throw new IndexOutOfBoundsException();
         }
@@ -65,8 +61,7 @@ public final class SliceInput
      * if and only if {@code available()} is greater
      * than {@code 0}.
      */
-    public boolean isReadable()
-    {
+    public boolean isReadable() {
         return available() > 0;
     }
 
@@ -75,21 +70,18 @@ public final class SliceInput
      * {@code (this.slice.length() - this.position)}.
      */
     @Override
-    public int available()
-    {
+    public int available() {
         return slice.length() - position;
     }
 
     @Override
     public boolean readBoolean()
-            throws IOException
-    {
+            throws IOException {
         return readByte() != 0;
     }
 
     @Override
-    public int read()
-    {
+    public int read() {
         return readByte();
     }
 
@@ -100,8 +92,7 @@ public final class SliceInput
      * @throws IndexOutOfBoundsException if {@code this.available()} is less than {@code 1}
      */
     @Override
-    public byte readByte()
-    {
+    public byte readByte() {
         if (position == slice.length()) {
             throw new IndexOutOfBoundsException();
         }
@@ -115,8 +106,7 @@ public final class SliceInput
      * @throws IndexOutOfBoundsException if {@code this.available()} is less than {@code 1}
      */
     @Override
-    public int readUnsignedByte()
-    {
+    public int readUnsignedByte() {
         return (short) (readByte() & 0xFF);
     }
 
@@ -127,8 +117,7 @@ public final class SliceInput
      * @throws IndexOutOfBoundsException if {@code this.available()} is less than {@code 2}
      */
     @Override
-    public short readShort()
-    {
+    public short readShort() {
         short v = slice.getShort(position);
         position += 2;
         return v;
@@ -136,8 +125,7 @@ public final class SliceInput
 
     @Override
     public int readUnsignedShort()
-            throws IOException
-    {
+            throws IOException {
         return readShort() & 0xff;
     }
 
@@ -148,8 +136,7 @@ public final class SliceInput
      * @throws IndexOutOfBoundsException if {@code this.available()} is less than {@code 4}
      */
     @Override
-    public int readInt()
-    {
+    public int readInt() {
         int v = slice.getInt(position);
         position += 4;
         return v;
@@ -161,8 +148,7 @@ public final class SliceInput
      *
      * @throws IndexOutOfBoundsException if {@code this.available()} is less than {@code 4}
      */
-    public long readUnsignedInt()
-    {
+    public long readUnsignedInt() {
         return readInt() & 0xFFFFFFFFL;
     }
 
@@ -173,15 +159,13 @@ public final class SliceInput
      * @throws IndexOutOfBoundsException if {@code this.available()} is less than {@code 8}
      */
     @Override
-    public long readLong()
-    {
+    public long readLong() {
         long v = slice.getLong(position);
         position += 8;
         return v;
     }
 
-    public byte[] readByteArray(int length)
-    {
+    public byte[] readByteArray(int length) {
         byte[] value = slice.copyBytes(position, length);
         position += length;
         return value;
@@ -198,8 +182,7 @@ public final class SliceInput
      * @return the newly created buffer which contains the transferred bytes
      * @throws IndexOutOfBoundsException if {@code length} is greater than {@code this.available()}
      */
-    public Slice readBytes(int length)
-    {
+    public Slice readBytes(int length) {
         if (length == 0) {
             return Slices.EMPTY_SLICE;
         }
@@ -217,16 +200,14 @@ public final class SliceInput
      * @return the newly created slice
      * @throws IndexOutOfBoundsException if {@code length} is greater than {@code this.available()}
      */
-    public Slice readSlice(int length)
-    {
+    public Slice readSlice(int length) {
         Slice newSlice = slice.slice(position, length);
         position += length;
         return newSlice;
     }
 
     @Override
-    public void readFully(byte[] destination)
-    {
+    public void readFully(byte[] destination) {
         readBytes(destination);
     }
 
@@ -237,14 +218,12 @@ public final class SliceInput
      *
      * @throws IndexOutOfBoundsException if {@code dst.length} is greater than {@code this.available()}
      */
-    public void readBytes(byte[] destination)
-    {
+    public void readBytes(byte[] destination) {
         readBytes(destination, 0, destination.length);
     }
 
     @Override
-    public void readFully(byte[] destination, int offset, int length)
-    {
+    public void readFully(byte[] destination, int offset, int length) {
         readBytes(destination, offset, length);
     }
 
@@ -254,13 +233,12 @@ public final class SliceInput
      * by the number of the transferred bytes (= {@code length}).
      *
      * @param destinationIndex the first index of the destination
-     * @param length the number of bytes to transfer
+     * @param length           the number of bytes to transfer
      * @throws IndexOutOfBoundsException if the specified {@code destinationIndex} is less than {@code 0},
-     * if {@code length} is greater than {@code this.available()}, or
-     * if {@code destinationIndex + length} is greater than {@code destination.length}
+     *                                   if {@code length} is greater than {@code this.available()}, or
+     *                                   if {@code destinationIndex + length} is greater than {@code destination.length}
      */
-    public void readBytes(byte[] destination, int destinationIndex, int length)
-    {
+    public void readBytes(byte[] destination, int destinationIndex, int length) {
         slice.getBytes(position, destination, destinationIndex, length);
         position += length;
     }
@@ -276,10 +254,9 @@ public final class SliceInput
      * does not.
      *
      * @throws IndexOutOfBoundsException if {@code destination.writableBytes} is greater than
-     * {@code this.available()}
+     *                                   {@code this.available()}
      */
-    public void readBytes(Slice destination)
-    {
+    public void readBytes(Slice destination) {
         readBytes(destination, destination.length());
     }
 
@@ -293,10 +270,9 @@ public final class SliceInput
      * while {@link #readBytes(Slice, int, int)} does not.
      *
      * @throws IndexOutOfBoundsException if {@code length} is greater than {@code this.available()} or
-     * if {@code length} is greater than {@code destination.writableBytes}
+     *                                   if {@code length} is greater than {@code destination.writableBytes}
      */
-    public void readBytes(Slice destination, int length)
-    {
+    public void readBytes(Slice destination, int length) {
         if (length > destination.length()) {
             throw new IndexOutOfBoundsException();
         }
@@ -309,14 +285,13 @@ public final class SliceInput
      * by the number of the transferred bytes (= {@code length}).
      *
      * @param destinationIndex the first index of the destination
-     * @param length the number of bytes to transfer
+     * @param length           the number of bytes to transfer
      * @throws IndexOutOfBoundsException if the specified {@code destinationIndex} is less than {@code 0},
-     * if {@code length} is greater than {@code this.available()}, or
-     * if {@code destinationIndex + length} is greater than
-     * {@code destination.capacity}
+     *                                   if {@code length} is greater than {@code this.available()}, or
+     *                                   if {@code destinationIndex + length} is greater than
+     *                                   {@code destination.capacity}
      */
-    public void readBytes(Slice destination, int destinationIndex, int length)
-    {
+    public void readBytes(Slice destination, int destinationIndex, int length) {
         slice.getBytes(position, destination, destinationIndex, length);
         position += length;
     }
@@ -328,10 +303,9 @@ public final class SliceInput
      * number of the transferred bytes.
      *
      * @throws IndexOutOfBoundsException if {@code destination.remaining()} is greater than
-     * {@code this.available()}
+     *                                   {@code this.available()}
      */
-    public void readBytes(ByteBuffer destination)
-    {
+    public void readBytes(ByteBuffer destination) {
         int length = destination.remaining();
         slice.getBytes(position, destination);
         position += length;
@@ -344,11 +318,10 @@ public final class SliceInput
      * @param length the maximum number of bytes to transfer
      * @return the actual number of bytes written out to the specified channel
      * @throws IndexOutOfBoundsException if {@code length} is greater than {@code this.available()}
-     * @throws java.io.IOException if the specified channel threw an exception during I/O
+     * @throws java.io.IOException       if the specified channel threw an exception during I/O
      */
     public int readBytes(GatheringByteChannel out, int length)
-            throws IOException
-    {
+            throws IOException {
         int readBytes = slice.getBytes(position, out, length);
         position += readBytes;
         return readBytes;
@@ -360,17 +333,15 @@ public final class SliceInput
      *
      * @param length the number of bytes to transfer
      * @throws IndexOutOfBoundsException if {@code length} is greater than {@code this.available()}
-     * @throws java.io.IOException if the specified stream threw an exception during I/O
+     * @throws java.io.IOException       if the specified stream threw an exception during I/O
      */
     public void readBytes(OutputStream out, int length)
-            throws IOException
-    {
+            throws IOException {
         slice.getBytes(position, out, length);
         position += length;
     }
 
-    public int skipBytes(int length)
-    {
+    public int skipBytes(int length) {
         length = Math.min(length, available());
         position += length;
         return length;
@@ -384,8 +355,7 @@ public final class SliceInput
      * This method does not modify {@code position} or {@code writerIndex} of
      * this buffer.
      */
-    public Slice slice()
-    {
+    public Slice slice() {
         return slice.slice(position, available());
     }
 
@@ -397,8 +367,7 @@ public final class SliceInput
      * This method does not modify {@code position} or {@code writerIndex} of
      * this buffer.
      */
-    public ByteBuffer toByteBuffer()
-    {
+    public ByteBuffer toByteBuffer() {
         return slice.toByteBuffer(position, available());
     }
 
@@ -410,16 +379,14 @@ public final class SliceInput
      * this buffer.
      *
      * @throws java.nio.charset.UnsupportedCharsetException if the specified character set name is not supported by the
-     * current VM
+     *                                                      current VM
      */
-    public String toString(Charset charset)
-    {
+    public String toString(Charset charset) {
         return slice.toString(position, available(), charset);
     }
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         return getClass().getSimpleName() + '(' +
                 "ridx=" + position + ", " +
                 "cap=" + slice.length() +
@@ -436,8 +403,7 @@ public final class SliceInput
      * @throws UnsupportedOperationException always
      */
     @Override
-    public char readChar()
-    {
+    public char readChar() {
         throw new UnsupportedOperationException();
     }
 
@@ -447,25 +413,12 @@ public final class SliceInput
      * @throws UnsupportedOperationException always
      */
     @Override
-    public float readFloat()
-    {
+    public float readFloat() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public double readDouble()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    /**
-     * Unsupported operation
-     *
-     * @throws UnsupportedOperationException always
-     */
-    @Override
-    public String readLine()
-    {
+    public double readDouble() {
         throw new UnsupportedOperationException();
     }
 
@@ -475,8 +428,17 @@ public final class SliceInput
      * @throws UnsupportedOperationException always
      */
     @Override
-    public String readUTF()
-    {
+    public String readLine() {
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Unsupported operation
+     *
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    public String readUTF() {
         throw new UnsupportedOperationException();
     }
 }

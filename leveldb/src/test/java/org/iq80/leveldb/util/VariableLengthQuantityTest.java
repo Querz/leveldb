@@ -21,11 +21,25 @@ import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
 
-public class VariableLengthQuantityTest
-{
+public class VariableLengthQuantityTest {
+    private static void testVariableLengthInt(int value) {
+        SliceOutput output = Slices.allocate(5).output();
+        VariableLengthQuantity.writeVariableLengthInt(value, output);
+        assertEquals(output.size(), VariableLengthQuantity.variableLengthSize(value));
+        int actual = VariableLengthQuantity.readVariableLengthInt(output.slice().input());
+        assertEquals(actual, value);
+    }
+
+    private static void testVariableLengthLong(long value) {
+        SliceOutput output = Slices.allocate(12).output();
+        VariableLengthQuantity.writeVariableLengthLong(value, output);
+        assertEquals(output.size(), VariableLengthQuantity.variableLengthSize(value));
+        long actual = VariableLengthQuantity.readVariableLengthLong(output.slice().input());
+        assertEquals(actual, value);
+    }
+
     @Test
-    public void testWriteVariableLengthInt()
-    {
+    public void testWriteVariableLengthInt() {
         testVariableLengthInt(0x0);
         testVariableLengthInt(0xf);
         testVariableLengthInt(0xff);
@@ -37,18 +51,8 @@ public class VariableLengthQuantityTest
         testVariableLengthInt(0xffffffff);
     }
 
-    private static void testVariableLengthInt(int value)
-    {
-        SliceOutput output = Slices.allocate(5).output();
-        VariableLengthQuantity.writeVariableLengthInt(value, output);
-        assertEquals(output.size(), VariableLengthQuantity.variableLengthSize(value));
-        int actual = VariableLengthQuantity.readVariableLengthInt(output.slice().input());
-        assertEquals(actual, value);
-    }
-
     @Test
-    public void testWriteVariableLengthLong()
-    {
+    public void testWriteVariableLengthLong() {
         testVariableLengthLong(0x0L);
         testVariableLengthLong(0xfL);
         testVariableLengthLong(0xffL);
@@ -66,14 +70,5 @@ public class VariableLengthQuantityTest
         testVariableLengthLong(0xffffffffffffffL);
         testVariableLengthLong(0xfffffffffffffffL);
         testVariableLengthLong(0xffffffffffffffffL);
-    }
-
-    private static void testVariableLengthLong(long value)
-    {
-        SliceOutput output = Slices.allocate(12).output();
-        VariableLengthQuantity.writeVariableLengthLong(value, output);
-        assertEquals(output.size(), VariableLengthQuantity.variableLengthSize(value));
-        long actual = VariableLengthQuantity.readVariableLengthLong(output.slice().input());
-        assertEquals(actual, value);
     }
 }

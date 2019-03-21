@@ -36,38 +36,29 @@ import java.util.Comparator;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
-public abstract class Table
-        implements SeekingIterable<Slice, Slice>
-{
+public abstract class Table implements SeekingIterable<Slice, Slice> {
+    protected static ByteBuffer uncompressedScratch = ByteBuffer.allocateDirect(4 * 1024 * 1024);
     protected final String name;
     protected final FileChannel fileChannel;
     protected final Comparator<Slice> comparator;
     protected final boolean verifyChecksums;
     protected final Block indexBlock;
     protected final BlockHandle metaindexBlockHandle;
-
     private LoadingCache<BlockHandle, Block> blockCache = CacheBuilder
             .newBuilder()
-            .maximumSize( 1000 )
-            .build( new CacheLoader<BlockHandle, Block>() {
-                @Override
-                public Block load( BlockHandle blockHandle ) throws Exception {
-                    Block dataBlock;
-
-                    try {
-                        dataBlock = readBlock(blockHandle);
-                    }
-                    catch (IOException e) {
-                        throw Throwables.propagate(e);
-                    }
-
-                    return dataBlock;
+            .maximumSize(1000)
+            .build(CacheLoader.from(blockHandle -> {
+                Block dataBlock;
+                try {
+                    dataBlock = readBlock(blockHandle);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-            } );
+                return dataBlock;
+            }));
 
     public Table(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
-            throws IOException
-    {
+            throws IOException {
         Preconditions.checkNotNull(name, "name is null");
         Preconditions.checkNotNull(fileChannel, "fileChannel is null");
         long size = fileChannel.size();
@@ -88,29 +79,24 @@ public abstract class Table
             throws IOException;
 
     @Override
-    public TableIterator iterator()
-    {
+    public TableIterator iterator() {
         return new TableIterator(this, indexBlock.iterator());
     }
 
-    public Block openBlock(Slice blockEntry)
-    {
+    public Block openBlock(Slice blockEntry) {
         BlockHandle blockHandle = BlockHandle.readBlockHandle(blockEntry.input());
         try {
-            return blockCache.get( blockHandle );
-        } catch ( ExecutionException e ) {
-            throw Throwables.propagate( e );
+            return blockCache.get(blockHandle);
+        } catch (ExecutionException e) {
+            throw Throwables.propagate(e);
         }
     }
-
-    protected static ByteBuffer uncompressedScratch = ByteBuffer.allocateDirect(4 * 1024 * 1024);
 
     protected abstract Block readBlock(BlockHandle blockHandle)
             throws IOException;
 
     protected int uncompressedLength(ByteBuffer data)
-            throws IOException
-    {
+            throws IOException {
         int length = VariableLengthQuantity.readVariableLengthInt(data.duplicate());
         return length;
     }
@@ -123,8 +109,7 @@ public abstract class Table
      * For example, the approximate offset of the last key in the table will
      * be close to the file length.
      */
-    public long getApproximateOffsetOf(Slice key)
-    {
+    public long getApproximateOffsetOf(Slice key) {
         BlockIterator iterator = indexBlock.iterator();
         iterator.seek(key);
         if (iterator.hasNext()) {
@@ -139,8 +124,7 @@ public abstract class Table
     }
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append("Table");
         sb.append("{name='").append(name).append('\'');
@@ -150,8 +134,7 @@ public abstract class Table
         return sb.toString();
     }
 
-    public Callable<?> closer()
-    {
+    public Callable<?> closer() {
         return new Closer(fileChannel);
     }
 
@@ -160,18 +143,15 @@ public abstract class Table
     }
 
     private static class Closer
-            implements Callable<Void>
-    {
+            implements Callable<Void> {
         private final Closeable closeable;
 
-        public Closer(Closeable closeable)
-        {
+        public Closer(Closeable closeable) {
             this.closeable = closeable;
         }
 
         @Override
-        public Void call()
-        {
+        public Void call() {
             Closeables.closeQuietly(closeable);
             return null;
         }

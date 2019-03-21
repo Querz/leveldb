@@ -27,8 +27,7 @@ import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 
-public final class ByteBufferSupport
-{
+public final class ByteBufferSupport {
     private static final MethodHandle INVOKE_CLEANER;
 
     static {
@@ -42,8 +41,7 @@ public final class ByteBufferSupport
             invoker = MethodHandles.lookup()
                     .findVirtual(unsafeClass, "invokeCleaner", MethodType.methodType(void.class, ByteBuffer.class))
                     .bindTo(theUnsafe.get(null));
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             // fall back to pre-java 9 compatible behavior
             try {
                 Class<?> directByteBufferClass = Class.forName("java.nio.DirectByteBuffer");
@@ -59,24 +57,20 @@ public final class ByteBufferSupport
 
                 clean = MethodHandles.dropArguments(clean, 1, directByteBufferClass);
                 invoker = MethodHandles.foldArguments(clean, getCleaner);
-            }
-            catch (Exception e1) {
+            } catch (Exception e1) {
                 throw new AssertionError(e1);
             }
         }
         INVOKE_CLEANER = invoker;
     }
 
-    private ByteBufferSupport()
-    {
+    private ByteBufferSupport() {
     }
 
-    public static void unmap(MappedByteBuffer buffer)
-    {
+    public static void unmap(MappedByteBuffer buffer) {
         try {
             INVOKE_CLEANER.invoke(buffer);
-        }
-        catch (Throwable ignored) {
+        } catch (Throwable ignored) {
             throw Throwables.propagate(ignored);
         }
     }

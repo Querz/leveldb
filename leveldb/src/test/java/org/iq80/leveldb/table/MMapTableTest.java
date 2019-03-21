@@ -24,12 +24,10 @@ import java.nio.channels.FileChannel;
 import java.util.Comparator;
 
 public class MMapTableTest
-        extends TableTest
-{
+        extends TableTest {
     @Override
     protected Table createTable(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
-            throws IOException
-    {
+            throws IOException {
         return new MMapTable(name, fileChannel, comparator, verifyChecksums);
     }
 }

@@ -27,12 +27,10 @@ import java.nio.channels.FileChannel;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
-public class TestMMapLogWriter
-{
+public class TestMMapLogWriter {
     @Test
     public void testLogRecordBounds()
-            throws Exception
-    {
+            throws Exception {
         File file = File.createTempFile("test", ".log");
         try {
             int recordSize = LogConstants.BLOCK_SIZE - LogConstants.HEADER_SIZE;
@@ -54,24 +52,20 @@ public class TestMMapLogWriter
                 count++;
             }
             assertEquals(count, 1);
-        }
-        finally {
+        } finally {
             file.delete();
         }
     }
 
     private static class AssertNoCorruptionLogMonitor
-            implements LogMonitor
-    {
+            implements LogMonitor {
         @Override
-        public void corruption(long bytes, String reason)
-        {
+        public void corruption(long bytes, String reason) {
             fail("corruption at " + bytes + " reason: " + reason);
         }
 
         @Override
-        public void corruption(long bytes, Throwable reason)
-        {
+        public void corruption(long bytes, Throwable reason) {
             fail("corruption at " + bytes + " reason: " + reason);
         }
     }

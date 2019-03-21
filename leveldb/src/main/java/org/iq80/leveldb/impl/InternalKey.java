@@ -25,14 +25,13 @@ import org.iq80.leveldb.util.Slices;
 import static com.google.common.base.Charsets.UTF_8;
 import static org.iq80.leveldb.util.SizeOf.SIZE_OF_LONG;
 
-public class InternalKey
-{
+public class InternalKey {
     private final Slice userKey;
     private final long sequenceNumber;
     private final ValueType valueType;
+    private int hash;
 
-    public InternalKey(Slice userKey, long sequenceNumber, ValueType valueType)
-    {
+    public InternalKey(Slice userKey, long sequenceNumber, ValueType valueType) {
         Preconditions.checkNotNull(userKey, "userKey is null");
         Preconditions.checkArgument(sequenceNumber >= 0, "sequenceNumber is negative");
         Preconditions.checkNotNull(valueType, "valueType is null");
@@ -42,8 +41,7 @@ public class InternalKey
         this.valueType = valueType;
     }
 
-    public InternalKey(Slice data)
-    {
+    public InternalKey(Slice data) {
         Preconditions.checkNotNull(data, "data is null");
         Preconditions.checkArgument(data.length() >= SIZE_OF_LONG, "data must be at least %s bytes", SIZE_OF_LONG);
         this.userKey = getUserKey(data);
@@ -52,28 +50,27 @@ public class InternalKey
         this.valueType = SequenceNumber.unpackValueType(packedSequenceAndType);
     }
 
-    public InternalKey(byte[] data)
-    {
+    public InternalKey(byte[] data) {
         this(Slices.wrappedBuffer(data));
     }
 
-    public Slice getUserKey()
-    {
+    private static Slice getUserKey(Slice data) {
+        return data.slice(0, data.length() - SIZE_OF_LONG);
+    }
+
+    public Slice getUserKey() {
         return userKey;
     }
 
-    public long getSequenceNumber()
-    {
+    public long getSequenceNumber() {
         return sequenceNumber;
     }
 
-    public ValueType getValueType()
-    {
+    public ValueType getValueType() {
         return valueType;
     }
 
-    public Slice encode()
-    {
+    public Slice encode() {
         Slice slice = Slices.allocate(userKey.length() + SIZE_OF_LONG);
         SliceOutput sliceOutput = slice.output();
         sliceOutput.writeBytes(userKey);
@@ -82,8 +79,7 @@ public class InternalKey
     }
 
     @Override
-    public boolean equals(Object o)
-    {
+    public boolean equals(Object o) {
         if (this == o) {
             return true;
         }
@@ -106,11 +102,8 @@ public class InternalKey
         return true;
     }
 
-    private int hash;
-
     @Override
-    public int hashCode()
-    {
+    public int hashCode() {
         if (hash == 0) {
             int result = userKey != null ? userKey.hashCode() : 0;
             result = 31 * result + (int) (sequenceNumber ^ (sequenceNumber >>> 32));
@@ -124,8 +117,7 @@ public class InternalKey
     }
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         StringBuilder sb = new StringBuilder();
         sb.append("InternalKey");
         sb.append("{key=").append(getUserKey().toString(UTF_8));      // todo don't print the real value
@@ -133,10 +125,5 @@ public class InternalKey
         sb.append(", valueType=").append(getValueType());
         sb.append('}');
         return sb.toString();
-    }
-
-    private static Slice getUserKey(Slice data)
-    {
-        return data.slice(0, data.length() - SIZE_OF_LONG);
     }
 }

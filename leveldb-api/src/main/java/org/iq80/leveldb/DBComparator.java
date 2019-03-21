@@ -23,8 +23,7 @@ import java.util.Comparator;
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
 public interface DBComparator
-        extends Comparator<byte[]>
-{
+        extends Comparator<byte[]> {
     String name();
 
     /**

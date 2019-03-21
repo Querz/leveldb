@@ -24,8 +24,7 @@ import java.util.Map;
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
 public interface DB
-        extends Iterable<Map.Entry<byte[], byte[]>>, Closeable
-{
+        extends Iterable<Map.Entry<byte[], byte[]>>, Closeable {
     byte[] get(byte[] key)
             throws DBException;
 
@@ -91,7 +90,7 @@ public interface DB
      * Force a compaction of the specified key range.
      *
      * @param begin if null then compaction start from the first key
-     * @param end if null then compaction ends at the last key
+     * @param end   if null then compaction ends at the last key
      */
     void compactRange(byte[] begin, byte[] end)
             throws DBException;

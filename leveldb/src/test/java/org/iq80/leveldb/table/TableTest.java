@@ -38,8 +38,7 @@ import java.util.List;
 import static java.util.Arrays.asList;
 import static org.testng.Assert.assertTrue;
 
-public abstract class TableTest
-{
+public abstract class TableTest {
     private File file;
     private RandomAccessFile randomAccessFile;
     private FileChannel fileChannel;
@@ -49,30 +48,26 @@ public abstract class TableTest
 
     @Test(expectedExceptions = IllegalArgumentException.class)
     public void testEmptyFile()
-            throws Exception
-    {
+            throws Exception {
         createTable(file.getAbsolutePath(), fileChannel, new BytewiseComparator(), true);
     }
 
     @Test
     public void testEmptyBlock()
-            throws Exception
-    {
+            throws Exception {
         tableTest(Integer.MAX_VALUE, Integer.MAX_VALUE);
     }
 
     @Test
     public void testSingleEntrySingleBlock()
-            throws Exception
-    {
+            throws Exception {
         tableTest(Integer.MAX_VALUE, Integer.MAX_VALUE,
                 BlockHelper.createBlockEntry("name", "dain sundstrom"));
     }
 
     @Test
     public void testMultipleEntriesWithSingleBlock()
-            throws Exception
-    {
+            throws Exception {
         List<BlockEntry> entries = asList(
                 BlockHelper.createBlockEntry("beer/ale", "Lagunitas  Little Sumpin’ Sumpin’"),
                 BlockHelper.createBlockEntry("beer/ipa", "Lagunitas IPA"),
@@ -88,8 +83,7 @@ public abstract class TableTest
 
     @Test
     public void testMultipleEntriesWithMultipleBlock()
-            throws Exception
-    {
+            throws Exception {
         List<BlockEntry> entries = asList(
                 BlockHelper.createBlockEntry("beer/ale", "Lagunitas  Little Sumpin’ Sumpin’"),
                 BlockHelper.createBlockEntry("beer/ipa", "Lagunitas IPA"),
@@ -106,14 +100,12 @@ public abstract class TableTest
     }
 
     private void tableTest(int blockSize, int blockRestartInterval, BlockEntry... entries)
-            throws IOException
-    {
+            throws IOException {
         tableTest(blockSize, blockRestartInterval, asList(entries));
     }
 
     private void tableTest(int blockSize, int blockRestartInterval, List<BlockEntry> entries)
-            throws IOException
-    {
+            throws IOException {
         reopenFile();
         Options options = new Options().blockSize(blockSize).blockRestartInterval(blockRestartInterval);
         TableBuilder builder = new TableBuilder(options, fileChannel, new BytewiseComparator());
@@ -148,7 +140,7 @@ public abstract class TableTest
             lastApproximateOffset = approximateOffset;
         }
 
-        Slice endKey = Slices.wrappedBuffer(new byte[] {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
+        Slice endKey = Slices.wrappedBuffer(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
         seekingIterator.seek(endKey);
         BlockHelper.assertSequence(seekingIterator, Collections.<BlockEntry>emptyList());
 
@@ -159,15 +151,13 @@ public abstract class TableTest
 
     @BeforeMethod
     public void setUp()
-            throws Exception
-    {
+            throws Exception {
         reopenFile();
         Preconditions.checkState(0 == fileChannel.position(), "Expected fileChannel.position %s to be 0", fileChannel.position());
     }
 
     private void reopenFile()
-            throws IOException
-    {
+            throws IOException {
         file = File.createTempFile("table", ".db");
         file.delete();
         randomAccessFile = new RandomAccessFile(file, "rw");
@@ -176,8 +166,7 @@ public abstract class TableTest
 
     @AfterMethod
     public void tearDown()
-            throws Exception
-    {
+            throws Exception {
         Closeables.closeQuietly(fileChannel);
         Closeables.closeQuietly(randomAccessFile);
         file.delete();

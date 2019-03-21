@@ -22,110 +22,75 @@ import org.iq80.leveldb.DBFactory;
 import org.iq80.leveldb.Options;
 import org.iq80.leveldb.util.FileUtils;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 
 /**
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
 public class Iq80DBFactory
-        implements DBFactory
-{
-    public static final int CPU_DATA_MODEL;
-
-    static {
-        boolean is64bit;
-        if (System.getProperty("os.name").contains("Windows")) {
-            is64bit = System.getenv("ProgramFiles(x86)") != null;
-        }
-        else {
-            is64bit = System.getProperty("os.arch").contains("64");
-        }
-        CPU_DATA_MODEL = is64bit ? 64 : 32;
-    }
-
+        implements DBFactory {
+    public static final boolean IS_64_BIT = is64bit();
     // We only use MMAP on 64 bit systems since it's really easy to run out of
     // virtual address space on a 32 bit system when all the data is getting mapped
     // into memory.  If you really want to use MMAP anyways, use -Dleveldb.mmap=true
-    public static final boolean USE_MMAP = Boolean.parseBoolean(System.getProperty("leveldb.mmap", "" + (CPU_DATA_MODEL > 32)));
-
-    public static final String VERSION;
-
-    static {
-        String v = "unknown";
-        InputStream is = Iq80DBFactory.class.getResourceAsStream("version.txt");
-        try {
-            v = new BufferedReader(new InputStreamReader(is, "UTF-8")).readLine();
-        }
-        catch (Throwable e) {
-        }
-        finally {
-            try {
-                is.close();
-            }
-            catch (Throwable e) {
-            }
-        }
-        VERSION = v;
-    }
-
+    public static final boolean USE_MMAP = Boolean.parseBoolean(System.getProperty("leveldb.mmap", Boolean.toString(IS_64_BIT)));
+    public static final String VERSION = getVersion();
     public static final Iq80DBFactory factory = new Iq80DBFactory();
 
+    private static boolean is64bit() {
+        boolean is64bit;
+        if (System.getProperty("os.name").contains("Windows")) {
+            is64bit = System.getenv("ProgramFiles(x86)") != null;
+        } else {
+            is64bit = System.getProperty("os.arch").contains("64");
+        }
+        return is64bit;
+    }
+
+    private static String getVersion() {
+        String version = "unknown";
+        InputStream is = Iq80DBFactory.class.getResourceAsStream("version.txt");
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            version = reader.readLine();
+        } catch (IOException e) {
+            // ignore
+        }
+        return version;
+    }
+
+    public static byte[] bytes(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.getBytes(StandardCharsets.UTF_8);
+    }
+
+    public static String asString(byte[] value) {
+        if (value == null) {
+            return null;
+        }
+        return new String(value, StandardCharsets.UTF_8);
+    }
+
     @Override
-    public DB open(File path, Options options)
-            throws IOException
-    {
+    public DB open(File path, Options options) throws IOException {
         return new DbImpl(options, path);
     }
 
     @Override
-    public void destroy(File path, Options options)
-            throws IOException
-    {
+    public void destroy(File path, Options options) throws IOException {
         // TODO: This should really only delete leveldb-created files.
         FileUtils.deleteRecursively(path);
     }
 
     @Override
-    public void repair(File path, Options options)
-            throws IOException
-    {
+    public void repair(File path, Options options) throws IOException {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public String toString()
-    {
+    public String toString() {
         return String.format("iq80 leveldb version %s", VERSION);
-    }
-
-    public static byte[] bytes(String value)
-    {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return value.getBytes("UTF-8");
-        }
-        catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static String asString(byte[] value)
-    {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return new String(value, "UTF-8");
-        }
-        catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e);
-        }
     }
 }
