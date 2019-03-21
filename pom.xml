@@ -28,12 +28,12 @@
     <!-- Distribution Management -->
     <distributionManagement>
         <repository>
-            <id>nukkitx-repo</id>
+            <id>releases</id>
             <name>NukkitX Release Repository</name>
             <url>https://repo.nukkitx.com/release</url>
         </repository>
         <snapshotRepository>
-            <id>nukkitx-snapshots</id>
+            <id>snapshots</id>
             <name>NukkitX Snapshot Repository</name>
             <url>https://repo.nukkitx.com/snapshot</url>
         </snapshotRepository>
