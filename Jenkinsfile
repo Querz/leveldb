@@ -19,7 +19,7 @@ pipeline {
                 branch "master"
             }
             steps {
-                sh 'mvn javadoc:jar source:jar deploy -DskipTests'
+                sh 'mvn source:jar deploy -DskipTests'
             }
         }
     }
