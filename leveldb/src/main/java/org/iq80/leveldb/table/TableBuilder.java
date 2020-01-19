@@ -125,19 +125,16 @@ public class TableBuilder {
         return entryCount;
     }
 
-    public long getFileSize()
-            throws IOException {
+    public long getFileSize() throws IOException {
         return position + dataBlockBuilder.currentSizeEstimate();
     }
 
-    public void add(BlockEntry blockEntry)
-            throws IOException {
+    public void add(BlockEntry blockEntry) throws IOException {
         Preconditions.checkNotNull(blockEntry, "blockEntry is null");
         add(blockEntry.getKey(), blockEntry.getValue());
     }
 
-    public void add(Slice key, Slice value)
-            throws IOException {
+    public void add(Slice key, Slice value) throws IOException {
         Preconditions.checkNotNull(key, "key is null");
         Preconditions.checkNotNull(value, "value is null");
 
@@ -168,8 +165,7 @@ public class TableBuilder {
         }
     }
 
-    private void flush()
-            throws IOException {
+    private void flush() throws IOException {
         Preconditions.checkState(!closed, "table is finished");
         if (dataBlockBuilder.isEmpty()) {
             return;
@@ -181,53 +177,37 @@ public class TableBuilder {
         pendingIndexEntry = true;
     }
 
-    private BlockHandle writeBlock(BlockBuilder blockBuilder)
-            throws IOException {
+    private BlockHandle writeBlock(BlockBuilder blockBuilder) throws IOException {
         // close the block
         Slice raw = blockBuilder.finish();
 
         // attempt to compress the block
         Slice blockContents = raw;
         CompressionType blockCompressionType = CompressionType.NONE;
-        if (compressionType == CompressionType.ZLIB_RAW) {
-            ensureCompressedOutputCapacity(maxCompressedLength(raw.length()));
-            try {
-                int compressedSize = Zlib.compressRaw(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
 
-                // Don't use the compressed data if compressed less than 12.5%,
-                if (compressedSize < raw.length() - (raw.length() / 8)) {
-                    blockContents = compressedOutput.slice(0, compressedSize);
-                    blockCompressionType = CompressionType.ZLIB_RAW;
-                }
-            } catch (IOException ignored) {
-                // compression failed, so just store uncompressed form
+        ensureCompressedOutputCapacity(maxCompressedLength(raw.length()));
+        try {
+            int compressedSize;
+            switch (compressionType) {
+                case ZLIB_RAW:
+                    compressedSize = Zlib.compressRaw(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
+                    break;
+                case ZLIB:
+                    compressedSize = Zlib.compress(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
+                    break;
+                case SNAPPY:
+                    compressedSize = Snappy.compress(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
+                    break;
+                default:
+                    throw new IOException("Unknown compression type");
             }
-        } else if (compressionType == CompressionType.ZLIB) {
-            ensureCompressedOutputCapacity(maxCompressedLength(raw.length()));
-            try {
-                int compressedSize = Zlib.compress(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
-
-                // Don't use the compressed data if compressed less than 12.5%,
-                if (compressedSize < raw.length() - (raw.length() / 8)) {
-                    blockContents = compressedOutput.slice(0, compressedSize);
-                    blockCompressionType = CompressionType.ZLIB;
-                }
-            } catch (IOException ignored) {
-                // compression failed, so just store uncompressed form
+            // Don't use the compressed data if compressed less than 12.5%,
+            if (compressedSize < raw.length() - (raw.length() / 8)) {
+                blockContents = compressedOutput.slice(0, compressedSize);
+                blockCompressionType = CompressionType.ZLIB;
             }
-        } else if (compressionType == CompressionType.SNAPPY) {
-            ensureCompressedOutputCapacity(maxCompressedLength(raw.length()));
-            try {
-                int compressedSize = Snappy.compress(raw.getRawArray(), raw.getRawOffset(), raw.length(), compressedOutput.getRawArray(), 0);
-
-                // Don't use the compressed data if compressed less than 12.5%,
-                if (compressedSize < raw.length() - (raw.length() / 8)) {
-                    blockContents = compressedOutput.slice(0, compressedSize);
-                    blockCompressionType = CompressionType.SNAPPY;
-                }
-            } catch (IOException ignored) {
-                // compression failed, so just store uncompressed form
-            }
+        } catch (IOException ignored) {
+            // compression failed, so just store uncompressed form
         }
 
         // create block trailer
@@ -246,8 +226,7 @@ public class TableBuilder {
         return blockHandle;
     }
 
-    public void finish()
-            throws IOException {
+    public void finish() throws IOException {
         Preconditions.checkState(!closed, "table is finished");
 
         // flush current data block

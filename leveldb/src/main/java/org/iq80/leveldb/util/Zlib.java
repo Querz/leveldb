@@ -131,16 +131,18 @@ public class Zlib {
      */
     private static class ZLibSPI {
 
-        private ThreadLocal<Deflater> deflaterThreadLocal = new ThreadLocal<>();
-        private ThreadLocal<Inflater> inflaterThreadLocal = new ThreadLocal<>();
-        private boolean raw;
+        private static final ThreadLocal<byte[]> BUFFERS = ThreadLocal.withInitial(() -> new byte[1024]);
 
-        public ZLibSPI(boolean raw) {
-            this.raw = raw;
+        private final ThreadLocal<Deflater> deflaterThreadLocal;
+        private final ThreadLocal<Inflater> inflaterThreadLocal;
+
+        public ZLibSPI(final boolean raw) {
+            this.deflaterThreadLocal = ThreadLocal.withInitial(() -> new Deflater(-1, raw));
+            this.inflaterThreadLocal = ThreadLocal.withInitial(() -> new Inflater(raw));
         }
 
         private int copy(InputStream in, OutputStream out) throws IOException {
-            byte[] buffer = new byte[1024];
+            byte[] buffer = BUFFERS.get();
             int read;
             int count = 0;
 
@@ -152,21 +154,15 @@ public class Zlib {
             return count;
         }
 
-        public int uncompress(ByteBuffer compressed, ByteArrayOutputStream uncompressed)
-                throws IOException {
+        public int uncompress(ByteBuffer compressed, ByteArrayOutputStream uncompressed) throws IOException {
             Inflater inflater = this.inflaterThreadLocal.get();
-            if (inflater == null) {
-                inflater = new Inflater(this.raw);
-                this.inflaterThreadLocal.set(inflater);
-            }
-
             inflater.reset();
 
             byte[] data = new byte[compressed.remaining()];
             compressed.get(data);
             inflater.setInput(data);
 
-            byte[] buffer = new byte[1024];
+            byte[] buffer = BUFFERS.get();
             int read;
             int count = 0;
 
@@ -182,14 +178,9 @@ public class Zlib {
             return count;
         }
 
-        public int uncompress(byte[] input, int inputOffset, int length,
-                              byte[] output, int outputOffset) throws IOException {
+        public int uncompress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
+                throws IOException {
             Inflater inflater = this.inflaterThreadLocal.get();
-            if (inflater == null) {
-                inflater = new Inflater(this.raw);
-                this.inflaterThreadLocal.set(inflater);
-            }
-
             inflater.reset();
 
             return copy(
@@ -199,14 +190,9 @@ public class Zlib {
                             outputOffset, output.length - outputOffset)));
         }
 
-        public int compress(byte[] input, int inputOffset, int length,
-                            byte[] output, int outputOffset) throws IOException {
+        public int compress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
+                throws IOException {
             Deflater deflater = this.deflaterThreadLocal.get();
-            if (deflater == null) {
-                deflater = new Deflater(-1, this.raw);
-                this.deflaterThreadLocal.set(deflater);
-            }
-
             deflater.reset();
 
             // TODO: parameters of Deflater to match MCPE expectations.
@@ -222,11 +208,6 @@ public class Zlib {
 
         public byte[] compress(String text) throws IOException {
             Deflater deflater = this.deflaterThreadLocal.get();
-            if (deflater == null) {
-                deflater = new Deflater(-1, this.raw);
-                this.deflaterThreadLocal.set(deflater);
-            }
-
             deflater.reset();
 
             byte[] input = text.getBytes();
