@@ -18,9 +18,8 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.collect.*;
-import org.iq80.leveldb.util.DynamicSliceOutput;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.SliceInput;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import org.iq80.leveldb.util.VariableLengthQuantity;
 
 import java.util.Map;
@@ -38,12 +37,11 @@ public class VersionEdit {
     public VersionEdit() {
     }
 
-    public VersionEdit(Slice slice) {
-        SliceInput sliceInput = slice.input();
-        while (sliceInput.isReadable()) {
-            int i = VariableLengthQuantity.readVariableLengthInt(sliceInput);
+    public VersionEdit(ByteBuf buffer) {
+        while (buffer.isReadable()) {
+            int i = VariableLengthQuantity.readVariableLengthInt(buffer);
             VersionEditTag tag = VersionEditTag.getValueTypeByPersistentId(i);
-            tag.readValue(sliceInput, this);
+            tag.readValue(buffer, this);
         }
     }
 
@@ -131,26 +129,24 @@ public class VersionEdit {
         deletedFiles.put(level, fileNumber);
     }
 
-    public Slice encode() {
-        DynamicSliceOutput dynamicSliceOutput = new DynamicSliceOutput(4096);
+    public ByteBuf encode() {
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.ioBuffer(4096);
         for (VersionEditTag versionEditTag : VersionEditTag.values()) {
-            versionEditTag.writeValue(dynamicSliceOutput, this);
+            versionEditTag.writeValue(buffer, this);
         }
-        return dynamicSliceOutput.slice();
+        return buffer;
     }
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("VersionEdit");
-        sb.append("{comparatorName='").append(comparatorName).append('\'');
-        sb.append(", logNumber=").append(logNumber);
-        sb.append(", previousLogNumber=").append(previousLogNumber);
-        sb.append(", lastSequenceNumber=").append(lastSequenceNumber);
-        sb.append(", compactPointers=").append(compactPointers);
-        sb.append(", newFiles=").append(newFiles);
-        sb.append(", deletedFiles=").append(deletedFiles);
-        sb.append('}');
-        return sb.toString();
+        return "VersionEdit" +
+                "(comparatorName='" + comparatorName + '\'' +
+                ", logNumber=" + logNumber +
+                ", previousLogNumber=" + previousLogNumber +
+                ", lastSequenceNumber=" + lastSequenceNumber +
+                ", compactPointers=" + compactPointers +
+                ", newFiles=" + newFiles +
+                ", deletedFiles=" + deletedFiles +
+                ')';
     }
 }

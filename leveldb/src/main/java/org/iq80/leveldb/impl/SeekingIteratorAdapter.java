@@ -18,9 +18,9 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.DBIterator;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.Slices;
 
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,7 +41,7 @@ public class SeekingIteratorAdapter
 
     @Override
     public void seek(byte[] targetKey) {
-        seekingIterator.seek(Slices.wrappedBuffer(targetKey));
+        seekingIterator.seek(Unpooled.wrappedBuffer(targetKey));
     }
 
     @Override
@@ -73,7 +73,7 @@ public class SeekingIteratorAdapter
         throw new UnsupportedOperationException();
     }
 
-    private DbEntry adapt(Entry<Slice, Slice> entry) {
+    private DbEntry adapt(Entry<ByteBuf, ByteBuf> entry) {
         return new DbEntry(entry.getKey(), entry.getValue());
     }
 
@@ -101,12 +101,11 @@ public class SeekingIteratorAdapter
         throw new UnsupportedOperationException();
     }
 
-    public static class DbEntry
-            implements Entry<byte[], byte[]> {
-        private final Slice key;
-        private final Slice value;
+    public static class DbEntry implements Entry<byte[], ByteBuf> {
+        private final ByteBuf key;
+        private final ByteBuf value;
 
-        public DbEntry(Slice key, Slice value) {
+        public DbEntry(ByteBuf key, ByteBuf value) {
             Preconditions.checkNotNull(key, "key is null");
             Preconditions.checkNotNull(value, "value is null");
             this.key = key;
@@ -115,24 +114,26 @@ public class SeekingIteratorAdapter
 
         @Override
         public byte[] getKey() {
-            return key.getBytes();
+            byte[] key = new byte[this.key.readableBytes()];
+            this.key.getBytes(this.key.readerIndex(), key);
+            return key;
         }
 
-        public Slice getKeySlice() {
+        public ByteBuf getKeyBuffer() {
             return key;
         }
 
         @Override
-        public byte[] getValue() {
-            return value.getBytes();
+        public ByteBuf getValue() {
+            return value;
         }
 
-        public Slice getValueSlice() {
+        public ByteBuf getValueBuffer() {
             return value;
         }
 
         @Override
-        public byte[] setValue(byte[] value) {
+        public ByteBuf setValue(ByteBuf value) {
             throw new UnsupportedOperationException();
         }
 

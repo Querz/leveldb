@@ -22,9 +22,9 @@ import com.google.common.base.Throwables;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.impl.SeekingIterable;
 import org.iq80.leveldb.util.Closeables;
-import org.iq80.leveldb.util.Slice;
 import org.iq80.leveldb.util.TableIterator;
 import org.iq80.leveldb.util.VariableLengthQuantity;
 
@@ -32,15 +32,16 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 
-public abstract class Table implements SeekingIterable<Slice, Slice> {
+public abstract class Table implements SeekingIterable<ByteBuf, ByteBuf> {
     protected static ByteBuffer uncompressedScratch = ByteBuffer.allocateDirect(4 * 1024 * 1024);
-    protected final String name;
+    protected final Path path;
     protected final FileChannel fileChannel;
-    protected final Comparator<Slice> comparator;
+    protected final Comparator<ByteBuf> comparator;
     protected final boolean verifyChecksums;
     protected final Block indexBlock;
     protected final BlockHandle metaindexBlockHandle;
@@ -57,15 +58,15 @@ public abstract class Table implements SeekingIterable<Slice, Slice> {
                 return dataBlock;
             }));
 
-    public Table(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
+    public Table(Path path, FileChannel fileChannel, Comparator<ByteBuf> comparator, boolean verifyChecksums)
             throws IOException {
-        Preconditions.checkNotNull(name, "name is null");
+        Preconditions.checkNotNull(path, "name is null");
         Preconditions.checkNotNull(fileChannel, "fileChannel is null");
         long size = fileChannel.size();
         Preconditions.checkArgument(size >= Footer.ENCODED_LENGTH, "File is corrupt: size must be at least %s bytes", Footer.ENCODED_LENGTH);
         Preconditions.checkNotNull(comparator, "comparator is null");
 
-        this.name = name;
+        this.path = path;
         this.fileChannel = fileChannel;
         this.verifyChecksums = verifyChecksums;
         this.comparator = comparator;
@@ -83,8 +84,8 @@ public abstract class Table implements SeekingIterable<Slice, Slice> {
         return new TableIterator(this, indexBlock.iterator());
     }
 
-    public Block openBlock(Slice blockEntry) {
-        BlockHandle blockHandle = BlockHandle.readBlockHandle(blockEntry.input());
+    public Block openBlock(ByteBuf blockEntry) {
+        BlockHandle blockHandle = BlockHandle.readBlockHandle(blockEntry);
         try {
             return blockCache.get(blockHandle);
         } catch (ExecutionException e) {
@@ -95,8 +96,7 @@ public abstract class Table implements SeekingIterable<Slice, Slice> {
     protected abstract Block readBlock(BlockHandle blockHandle)
             throws IOException;
 
-    protected int uncompressedLength(ByteBuffer data)
-            throws IOException {
+    protected int uncompressedLength(ByteBuffer data) throws IOException {
         int length = VariableLengthQuantity.readVariableLengthInt(data.duplicate());
         return length;
     }
@@ -109,11 +109,11 @@ public abstract class Table implements SeekingIterable<Slice, Slice> {
      * For example, the approximate offset of the last key in the table will
      * be close to the file length.
      */
-    public long getApproximateOffsetOf(Slice key) {
+    public long getApproximateOffsetOf(ByteBuf key) {
         BlockIterator iterator = indexBlock.iterator();
         iterator.seek(key);
         if (iterator.hasNext()) {
-            BlockHandle blockHandle = BlockHandle.readBlockHandle(iterator.next().getValue().input());
+            BlockHandle blockHandle = BlockHandle.readBlockHandle(iterator.next().getValue());
             return blockHandle.getOffset();
         }
 
@@ -125,13 +125,11 @@ public abstract class Table implements SeekingIterable<Slice, Slice> {
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Table");
-        sb.append("{name='").append(name).append('\'');
-        sb.append(", comparator=").append(comparator);
-        sb.append(", verifyChecksums=").append(verifyChecksums);
-        sb.append('}');
-        return sb.toString();
+        return "Table" +
+                "(name='" + path + '\'' +
+                ", comparator=" + comparator +
+                ", verifyChecksums=" + verifyChecksums +
+                ')';
     }
 
     public Callable<?> closer() {

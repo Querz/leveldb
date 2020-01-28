@@ -17,12 +17,12 @@
  */
 package org.iq80.leveldb.impl;
 
-import org.iq80.leveldb.util.Slice;
+import io.netty.buffer.ByteBuf;
 
 public class LookupKey {
     private final InternalKey key;
 
-    public LookupKey(Slice userKey, long sequenceNumber) {
+    public LookupKey(ByteBuf userKey, long sequenceNumber) {
         key = new InternalKey(userKey, sequenceNumber, ValueType.VALUE);
     }
 
@@ -30,7 +30,7 @@ public class LookupKey {
         return key;
     }
 
-    public Slice getUserKey() {
+    public ByteBuf getUserKey() {
         return key.getUserKey();
     }
 

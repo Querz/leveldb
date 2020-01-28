@@ -18,13 +18,12 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.table.UserComparator;
-import org.iq80.leveldb.util.Slice;
 
 import static org.iq80.leveldb.impl.SequenceNumber.MAX_SEQUENCE_NUMBER;
 
-public class InternalUserComparator
-        implements UserComparator {
+public class InternalUserComparator implements UserComparator {
     private final InternalKeyComparator internalKeyComparator;
 
     public InternalUserComparator(InternalKeyComparator internalKeyComparator) {
@@ -32,7 +31,7 @@ public class InternalUserComparator
     }
 
     @Override
-    public int compare(Slice left, Slice right) {
+    public int compare(ByteBuf left, ByteBuf right) {
         return internalKeyComparator.compare(new InternalKey(left), new InternalKey(right));
     }
 
@@ -42,14 +41,12 @@ public class InternalUserComparator
     }
 
     @Override
-    public Slice findShortestSeparator(
-            Slice start,
-            Slice limit) {
+    public ByteBuf findShortestSeparator(ByteBuf start, ByteBuf limit) {
         // Attempt to shorten the user portion of the key
-        Slice startUserKey = new InternalKey(start).getUserKey();
-        Slice limitUserKey = new InternalKey(limit).getUserKey();
+        ByteBuf startUserKey = new InternalKey(start).getUserKey();
+        ByteBuf limitUserKey = new InternalKey(limit).getUserKey();
 
-        Slice shortestSeparator = internalKeyComparator.getUserComparator().findShortestSeparator(startUserKey, limitUserKey);
+        ByteBuf shortestSeparator = internalKeyComparator.getUserComparator().findShortestSeparator(startUserKey, limitUserKey);
 
         if (internalKeyComparator.getUserComparator().compare(startUserKey, shortestSeparator) < 0) {
             // User key has become larger.  Tack on the earliest possible
@@ -65,9 +62,9 @@ public class InternalUserComparator
     }
 
     @Override
-    public Slice findShortSuccessor(Slice key) {
-        Slice userKey = new InternalKey(key).getUserKey();
-        Slice shortSuccessor = internalKeyComparator.getUserComparator().findShortSuccessor(userKey);
+    public ByteBuf findShortSuccessor(ByteBuf key) {
+        ByteBuf userKey = new InternalKey(key).getUserKey();
+        ByteBuf shortSuccessor = internalKeyComparator.getUserComparator().findShortSuccessor(userKey);
 
         if (internalKeyComparator.getUserComparator().compare(userKey, shortSuccessor) < 0) {
             // User key has become larger.  Tack on the earliest possible

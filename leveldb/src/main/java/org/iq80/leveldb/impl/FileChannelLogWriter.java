@@ -18,6 +18,8 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import org.iq80.leveldb.util.*;
 
 import java.io.File;
@@ -26,14 +28,16 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.iq80.leveldb.impl.LogConstants.BLOCK_SIZE;
 import static org.iq80.leveldb.impl.LogConstants.HEADER_SIZE;
 
-public class FileChannelLogWriter
-        implements LogWriter {
-    private final File file;
+public class FileChannelLogWriter implements LogWriter {
+    private final Path file;
     private final long fileNumber;
     private final FileChannel fileChannel;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -43,14 +47,13 @@ public class FileChannelLogWriter
      */
     private int blockOffset;
 
-    public FileChannelLogWriter(File file, long fileNumber)
-            throws FileNotFoundException {
+    public FileChannelLogWriter(Path file, long fileNumber) throws IOException {
         Preconditions.checkNotNull(file, "file is null");
         Preconditions.checkArgument(fileNumber >= 0, "fileNumber is negative");
 
         this.file = file;
         this.fileNumber = fileNumber;
-        this.fileChannel = new FileOutputStream(file).getChannel();
+        this.fileChannel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
     }
 
     @Override
@@ -73,18 +76,18 @@ public class FileChannelLogWriter
     }
 
     @Override
-    public synchronized void delete() {
+    public synchronized void delete() throws IOException {
         closed.set(true);
 
         // close the channel
         Closeables.closeQuietly(fileChannel);
 
         // try to delete the file
-        file.delete();
+        Files.delete(file);
     }
 
     @Override
-    public File getFile() {
+    public Path getPath() {
         return file;
     }
 
@@ -95,11 +98,8 @@ public class FileChannelLogWriter
 
     // Writes a stream of chunks such that no chunk is split across a block boundary
     @Override
-    public synchronized void addRecord(Slice record, boolean force)
-            throws IOException {
+    public synchronized void addRecord(ByteBuf record, boolean force) throws IOException {
         Preconditions.checkState(!closed.get(), "Log has been closed");
-
-        SliceInput sliceInput = record.input();
 
         // used to track first, middle and last blocks
         boolean begin = true;
@@ -130,12 +130,12 @@ public class FileChannelLogWriter
             // fragment the record; otherwise write to the end of the record
             boolean end;
             int fragmentLength;
-            if (sliceInput.available() > bytesAvailableInBlock) {
+            if (record.readableBytes() > bytesAvailableInBlock) {
                 end = false;
                 fragmentLength = bytesAvailableInBlock;
             } else {
                 end = true;
-                fragmentLength = sliceInput.available();
+                fragmentLength = record.readableBytes();
             }
 
             // determine block type
@@ -151,42 +151,45 @@ public class FileChannelLogWriter
             }
 
             // write the chunk
-            writeChunk(type, sliceInput.readSlice(fragmentLength));
+            writeChunk(type, record.readSlice(fragmentLength));
 
             // we are no longer on the first chunk
             begin = false;
-        } while (sliceInput.isReadable());
+        } while (record.isReadable());
 
         if (force) {
             fileChannel.force(false);
         }
     }
 
-    private void writeChunk(LogChunkType type, Slice slice)
-            throws IOException {
-        Preconditions.checkArgument(slice.length() <= 0xffff, "length %s is larger than two bytes", slice.length());
+    private void writeChunk(LogChunkType type, ByteBuf buffer) throws IOException {
+        Preconditions.checkArgument(buffer.readableBytes() <= 0xffff, "length %s is larger than two bytes", buffer.readableBytes());
         Preconditions.checkArgument(blockOffset + HEADER_SIZE <= BLOCK_SIZE);
 
         // create header
-        Slice header = newLogRecordHeader(type, slice, slice.length());
+        ByteBuf header = newLogRecordHeader(type, buffer, buffer.readableBytes());
+        try {
 
-        // write the header and the payload
-        header.getBytes(0, fileChannel, header.length());
-        slice.getBytes(0, fileChannel, slice.length());
+            // write the header and the payload
+            header.getBytes(0, fileChannel, header.readableBytes());
+            buffer.getBytes(0, fileChannel, buffer.readableBytes());
+        } finally {
+            header.release();
+        }
 
-        blockOffset += HEADER_SIZE + slice.length();
+        blockOffset += HEADER_SIZE + buffer.readableBytes();
     }
 
-    private Slice newLogRecordHeader(LogChunkType type, Slice slice, int length) {
-        int crc = Logs.getChunkChecksum(type.getPersistentId(), slice.getRawArray(), slice.getRawOffset(), length);
+    private ByteBuf newLogRecordHeader(LogChunkType type, ByteBuf buffer, int length) {
+        int crc = CRC32CUtils.getChunkChecksum(type.getPersistentId(), buffer, length);
 
         // Format the header
-        SliceOutput header = Slices.allocate(HEADER_SIZE).output();
+        ByteBuf header = ByteBufAllocator.DEFAULT.ioBuffer(HEADER_SIZE);
         header.writeInt(crc);
         header.writeByte((byte) (length & 0xff));
         header.writeByte((byte) (length >>> 8));
         header.writeByte((byte) (type.getPersistentId()));
 
-        return header.slice();
+        return header;
     }
 }

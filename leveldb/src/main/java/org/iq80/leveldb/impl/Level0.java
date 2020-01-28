@@ -19,10 +19,10 @@ package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.table.UserComparator;
 import org.iq80.leveldb.util.InternalTableIterator;
 import org.iq80.leveldb.util.Level0Iterator;
-import org.iq80.leveldb.util.Slice;
 
 import java.util.Collections;
 import java.util.Comparator;
@@ -35,14 +35,9 @@ import static org.iq80.leveldb.impl.SequenceNumber.MAX_SEQUENCE_NUMBER;
 import static org.iq80.leveldb.impl.ValueType.VALUE;
 
 // todo this class should be immutable
-public class Level0
-        implements SeekingIterable<InternalKey, Slice> {
-    public static final Comparator<FileMetaData> NEWEST_FIRST = new Comparator<FileMetaData>() {
-        @Override
-        public int compare(FileMetaData fileMetaData, FileMetaData fileMetaData1) {
-            return (int) (fileMetaData1.getNumber() - fileMetaData.getNumber());
-        }
-    };
+public class Level0 implements SeekingIterable<InternalKey, ByteBuf> {
+    public static final Comparator<FileMetaData> NEWEST_FIRST =
+            (fileMetaData, fileMetaData1) -> (int) (fileMetaData1.getNumber() - fileMetaData.getNumber());
     private final TableCache tableCache;
     private final InternalKeyComparator internalKeyComparator;
     private final List<FileMetaData> files;
@@ -83,7 +78,7 @@ public class Level0
             }
         }
 
-        Collections.sort(fileMetaDataList, NEWEST_FIRST);
+        fileMetaDataList.sort(NEWEST_FIRST);
 
         readStats.clear();
         for (FileMetaData fileMetaData : fileMetaDataList) {
@@ -95,7 +90,7 @@ public class Level0
 
             if (iterator.hasNext()) {
                 // parse the key in the block
-                Entry<InternalKey, Slice> entry = iterator.next();
+                Entry<InternalKey, ByteBuf> entry = iterator.next();
                 InternalKey internalKey = entry.getKey();
                 Preconditions.checkState(internalKey != null, "Corrupt key for %s", key.getUserKey().toString(UTF_8));
 
@@ -119,7 +114,7 @@ public class Level0
         return null;
     }
 
-    public boolean someFileOverlapsRange(Slice smallestUserKey, Slice largestUserKey) {
+    public boolean someFileOverlapsRange(ByteBuf smallestUserKey, ByteBuf largestUserKey) {
         InternalKey smallestInternalKey = new InternalKey(smallestUserKey, MAX_SEQUENCE_NUMBER, VALUE);
         int index = findFile(smallestInternalKey);
 

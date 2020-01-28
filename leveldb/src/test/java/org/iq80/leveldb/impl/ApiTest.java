@@ -17,15 +17,21 @@
  */
 package org.iq80.leveldb.impl;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.*;
 import org.iq80.leveldb.util.FileUtils;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertTrue;
 
 /**
@@ -34,7 +40,16 @@ import static org.testng.Assert.assertTrue;
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
 public class ApiTest {
-    private final File databaseDir = FileUtils.createTempDir("leveldb");
+    private final Path databaseDir;
+
+    {
+        try {
+            databaseDir = Files.createTempDirectory("leveldb");
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
     private final DBFactory factory = Iq80DBFactory.factory;
 
     public static byte[] bytes(String value) {
@@ -63,20 +78,18 @@ public class ApiTest {
         assertTrue(Arrays.equals(arg1, arg2), asString(arg1) + " != " + asString(arg2));
     }
 
-    File getTestDirectory(String name)
-            throws IOException {
-        File rc = new File(databaseDir, name);
+    Path getTestDirectory(String name) throws IOException {
+        Path rc = databaseDir.resolve(name);
         factory.destroy(rc, new Options().createIfMissing(true));
-        rc.mkdirs();
+        Files.createDirectories(rc);
         return rc;
     }
 
     @Test
-    public void testCompaction()
-            throws IOException, DBException {
+    public void testCompaction() throws IOException, DBException {
         Options options = new Options().createIfMissing(true).compressionType(CompressionType.NONE);
 
-        File path = getTestDirectory("testCompaction");
+        Path path = getTestDirectory("testCompaction");
         DB db = factory.open(path, options);
 
         System.out.println("Adding");
@@ -84,7 +97,16 @@ public class ApiTest {
             if (i % 100000 == 0) {
                 System.out.println("  at: " + i);
             }
-            db.put(bytes("key" + i), bytes("value" + i));
+            db.put(bytes("key" + i), Unpooled.wrappedBuffer(bytes("value" + i)));
+        }
+
+        System.out.println("Checking");
+        for (int i = 0; i < 1000 * 1000; i++) {
+            if (i % 100000 == 0) {
+                System.out.println("  at: " + i);
+            }
+            ByteBuf buffer = db.get(bytes("key" + i));
+            Assert.assertEquals(buffer == null ? null : buffer.toString(UTF_8), "value" + i);
         }
 
         db.close();
@@ -106,7 +128,7 @@ public class ApiTest {
             if (i % 100000 == 0) {
                 System.out.println("  at: " + i);
             }
-            db.put(bytes("key" + i), bytes("value" + i));
+            db.put(bytes("key" + i), Unpooled.wrappedBuffer(bytes("value" + i)));
         }
 
         db.close();

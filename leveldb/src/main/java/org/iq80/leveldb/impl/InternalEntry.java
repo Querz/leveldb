@@ -18,18 +18,17 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
-import org.iq80.leveldb.util.Slice;
+import io.netty.buffer.ByteBuf;
 
 import java.util.Map.Entry;
 
 import static com.google.common.base.Charsets.UTF_8;
 
-public class InternalEntry
-        implements Entry<InternalKey, Slice> {
+public class InternalEntry implements Entry<InternalKey, ByteBuf> {
     private final InternalKey key;
-    private final Slice value;
+    private final ByteBuf value;
 
-    public InternalEntry(InternalKey key, Slice value) {
+    public InternalEntry(InternalKey key, ByteBuf value) {
         Preconditions.checkNotNull(key, "key is null");
         Preconditions.checkNotNull(value, "value is null");
         this.key = key;
@@ -42,7 +41,7 @@ public class InternalEntry
     }
 
     @Override
-    public Slice getValue() {
+    public ByteBuf getValue() {
         return value;
     }
 
@@ -50,7 +49,7 @@ public class InternalEntry
      * @throws UnsupportedOperationException always
      */
     @Override
-    public final Slice setValue(Slice value) {
+    public final ByteBuf setValue(ByteBuf value) {
         throw new UnsupportedOperationException();
     }
 

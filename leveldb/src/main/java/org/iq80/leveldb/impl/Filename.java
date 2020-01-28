@@ -24,7 +24,13 @@ import com.google.common.collect.ImmutableList;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public final class Filename {
     private Filename() {
@@ -92,7 +98,7 @@ public final class Filename {
      * The number encoded in the filename is stored in *number.  If the
      * filename was successfully parsed, returns true.  Else return false.
      */
-    public static FileInfo parseFileName(File file) {
+    public static FileInfo parseFileName(Path file) {
         // Owned filenames have the form:
         //    dbname/CURRENT
         //    dbname/LOCK
@@ -100,7 +106,7 @@ public final class Filename {
         //    dbname/LOG.old
         //    dbname/MANIFEST-[0-9]+
         //    dbname/[0-9]+.(log|sst|dbtmp)
-        String fileName = file.getName();
+        String fileName = file.getFileName().toString();
         if ("CURRENT".equals(fileName)) {
             return new FileInfo(FileType.CURRENT);
         } else if ("LOCK".equals(fileName)) {
@@ -131,38 +137,36 @@ public final class Filename {
      *
      * @return true if successful; false otherwise
      */
-    public static boolean setCurrentFile(File databaseDir, long descriptorNumber)
+    public static boolean setCurrentFile(Path databasePath, long descriptorNumber)
             throws IOException {
         String manifest = descriptorFileName(descriptorNumber);
         String temp = tempFileName(descriptorNumber);
 
-        File tempFile = new File(databaseDir, temp);
+        Path tempFile = databasePath.resolve(temp);
         writeStringToFileSync(manifest + "\n", tempFile);
 
-        File to = new File(databaseDir, currentFileName());
-        boolean ok = tempFile.renameTo(to);
-        if (!ok) {
-            tempFile.delete();
-            writeStringToFileSync(manifest + "\n", to);
-        }
-        return ok;
-    }
-
-    private static void writeStringToFileSync(String str, File file)
-            throws IOException {
-        try (FileOutputStream stream = new FileOutputStream(file)) {
-            stream.write(str.getBytes(Charsets.UTF_8));
-            stream.flush();
-            stream.getFD().sync();
+        Path to = databasePath.resolve(currentFileName());
+        try {
+            Files.move(tempFile, to);
+            return true;
+        } catch (IOException e) {
+            try {
+                Files.delete(tempFile);
+                writeStringToFileSync(manifest + "\n", to);
+                return true;
+            } catch (IOException ex) {
+                return false;
+            }
         }
     }
 
-    public static List<File> listFiles(File dir) {
-        File[] files = dir.listFiles();
-        if (files == null) {
-            return ImmutableList.of();
-        }
-        return ImmutableList.copyOf(files);
+    private static void writeStringToFileSync(String str, Path path) throws IOException {
+        Files.write(path, str.getBytes(StandardCharsets.UTF_8), StandardOpenOption.SYNC, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+    }
+
+    public static List<Path> listFiles(Path path) throws IOException {
+        return Files.list(path).collect(Collectors.toList());
     }
 
     private static String makeFileName(long number, String suffix) {

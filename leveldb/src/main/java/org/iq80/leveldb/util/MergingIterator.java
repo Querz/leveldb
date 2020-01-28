@@ -18,13 +18,13 @@
 package org.iq80.leveldb.util;
 
 import com.google.common.primitives.Ints;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.impl.InternalKey;
 
 import java.util.*;
 import java.util.Map.Entry;
 
-public final class MergingIterator
-        extends AbstractSeekingIterator<InternalKey, Slice> {
+public final class MergingIterator extends AbstractSeekingIterator<InternalKey, ByteBuf> {
     private final List<? extends InternalIterator> levels;
     private final PriorityQueue<ComparableIterator> priorityQueue;
     private final Comparator<InternalKey> comparator;
@@ -63,8 +63,8 @@ public final class MergingIterator
     }
 
     @Override
-    protected Entry<InternalKey, Slice> getNextElement() {
-        Entry<InternalKey, Slice> result = null;
+    protected Entry<InternalKey, ByteBuf> getNextElement() {
+        Entry<InternalKey, ByteBuf> result = null;
         ComparableIterator nextIterator = priorityQueue.poll();
         if (nextIterator != null) {
             result = nextIterator.next();
@@ -85,14 +85,14 @@ public final class MergingIterator
         return sb.toString();
     }
 
-    private static class ComparableIterator
-            implements Iterator<Entry<InternalKey, Slice>>, Comparable<ComparableIterator> {
+    private static class ComparableIterator implements Iterator<Entry<InternalKey, ByteBuf>>, Comparable<ComparableIterator> {
         private final InternalIterator iterator;
         private final Comparator<InternalKey> comparator;
         private final int ordinal;
-        private Entry<InternalKey, Slice> nextElement;
+        private Entry<InternalKey, ByteBuf> nextElement;
 
-        private ComparableIterator(InternalIterator iterator, Comparator<InternalKey> comparator, int ordinal, Entry<InternalKey, Slice> nextElement) {
+        private ComparableIterator(InternalIterator iterator, Comparator<InternalKey> comparator, int ordinal,
+                                   Entry<InternalKey, ByteBuf> nextElement) {
             this.iterator = iterator;
             this.comparator = comparator;
             this.ordinal = ordinal;
@@ -105,12 +105,12 @@ public final class MergingIterator
         }
 
         @Override
-        public Entry<InternalKey, Slice> next() {
+        public Entry<InternalKey, ByteBuf> next() {
             if (nextElement == null) {
                 throw new NoSuchElementException();
             }
 
-            Entry<InternalKey, Slice> result = nextElement;
+            Entry<InternalKey, ByteBuf> result = nextElement;
             if (iterator.hasNext()) {
                 nextElement = iterator.next();
             } else {

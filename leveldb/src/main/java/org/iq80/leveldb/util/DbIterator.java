@@ -19,6 +19,7 @@ package org.iq80.leveldb.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.impl.InternalKey;
 import org.iq80.leveldb.impl.MemTable.MemTableIterator;
 import org.iq80.leveldb.impl.SeekingIterator;
@@ -29,9 +30,7 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 
-public final class DbIterator
-        extends AbstractSeekingIterator<InternalKey, Slice>
-        implements InternalIterator {
+public final class DbIterator extends AbstractSeekingIterator<InternalKey, ByteBuf> implements InternalIterator {
     /*
      * NOTE: This code has been specifically tuned for performance of the DB
      * iterator methods.  Before committing changes to this code, make sure
@@ -108,13 +107,13 @@ public final class DbIterator
     }
 
     @Override
-    protected Entry<InternalKey, Slice> getNextElement() {
+    protected Entry<InternalKey, ByteBuf> getNextElement() {
         if (heapSize == 0) {
             return null;
         }
 
         ComparableIterator smallest = heap[0];
-        Entry<InternalKey, Slice> result = smallest.next();
+        Entry<InternalKey, ByteBuf> result = smallest.next();
 
         // if the smallest iterator has more elements, put it back in the heap,
         // otherwise use the last element in the queue
@@ -209,14 +208,13 @@ public final class DbIterator
         return sb.toString();
     }
 
-    private static class ComparableIterator
-            implements Iterator<Entry<InternalKey, Slice>>, Comparable<ComparableIterator> {
-        private final SeekingIterator<InternalKey, Slice> iterator;
+    private static class ComparableIterator implements Iterator<Entry<InternalKey, ByteBuf>>, Comparable<ComparableIterator> {
+        private final SeekingIterator<InternalKey, ByteBuf> iterator;
         private final Comparator<InternalKey> comparator;
         private final int ordinal;
-        private Entry<InternalKey, Slice> nextElement;
+        private Entry<InternalKey, ByteBuf> nextElement;
 
-        private ComparableIterator(SeekingIterator<InternalKey, Slice> iterator, Comparator<InternalKey> comparator, int ordinal, Entry<InternalKey, Slice> nextElement) {
+        private ComparableIterator(SeekingIterator<InternalKey, ByteBuf> iterator, Comparator<InternalKey> comparator, int ordinal, Entry<InternalKey, ByteBuf> nextElement) {
             this.iterator = iterator;
             this.comparator = comparator;
             this.ordinal = ordinal;
@@ -229,12 +227,12 @@ public final class DbIterator
         }
 
         @Override
-        public Entry<InternalKey, Slice> next() {
+        public Entry<InternalKey, ByteBuf> next() {
             if (nextElement == null) {
                 throw new NoSuchElementException();
             }
 
-            Entry<InternalKey, Slice> result = nextElement;
+            Entry<InternalKey, ByteBuf> result = nextElement;
             if (iterator.hasNext()) {
                 nextElement = iterator.next();
             } else {

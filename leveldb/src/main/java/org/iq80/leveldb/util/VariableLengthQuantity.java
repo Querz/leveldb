@@ -17,6 +17,8 @@
  */
 package org.iq80.leveldb.util;
 
+import io.netty.buffer.ByteBuf;
+
 import java.nio.ByteBuffer;
 
 public final class VariableLengthQuantity {
@@ -41,44 +43,44 @@ public final class VariableLengthQuantity {
         return size;
     }
 
-    public static void writeVariableLengthInt(int value, SliceOutput sliceOutput) {
+    public static void writeVariableLengthInt(int value, ByteBuf buffer) {
         int highBitMask = 0x80;
         if (value < (1 << 7) && value >= 0) {
-            sliceOutput.writeByte(value);
+            buffer.writeByte(value);
         } else if (value < (1 << 14) && value > 0) {
-            sliceOutput.writeByte(value | highBitMask);
-            sliceOutput.writeByte(value >>> 7);
+            buffer.writeByte(value | highBitMask);
+            buffer.writeByte(value >>> 7);
         } else if (value < (1 << 21) && value > 0) {
-            sliceOutput.writeByte(value | highBitMask);
-            sliceOutput.writeByte((value >>> 7) | highBitMask);
-            sliceOutput.writeByte(value >>> 14);
+            buffer.writeByte(value | highBitMask);
+            buffer.writeByte((value >>> 7) | highBitMask);
+            buffer.writeByte(value >>> 14);
         } else if (value < (1 << 28) && value > 0) {
-            sliceOutput.writeByte(value | highBitMask);
-            sliceOutput.writeByte((value >>> 7) | highBitMask);
-            sliceOutput.writeByte((value >>> 14) | highBitMask);
-            sliceOutput.writeByte(value >>> 21);
+            buffer.writeByte(value | highBitMask);
+            buffer.writeByte((value >>> 7) | highBitMask);
+            buffer.writeByte((value >>> 14) | highBitMask);
+            buffer.writeByte(value >>> 21);
         } else {
-            sliceOutput.writeByte(value | highBitMask);
-            sliceOutput.writeByte((value >>> 7) | highBitMask);
-            sliceOutput.writeByte((value >>> 14) | highBitMask);
-            sliceOutput.writeByte((value >>> 21) | highBitMask);
-            sliceOutput.writeByte(value >>> 28);
+            buffer.writeByte(value | highBitMask);
+            buffer.writeByte((value >>> 7) | highBitMask);
+            buffer.writeByte((value >>> 14) | highBitMask);
+            buffer.writeByte((value >>> 21) | highBitMask);
+            buffer.writeByte(value >>> 28);
         }
     }
 
-    public static void writeVariableLengthLong(long value, SliceOutput sliceOutput) {
+    public static void writeVariableLengthLong(long value, ByteBuf buffer) {
         // while value more than the first 7 bits set
         while ((value & (~0x7f)) != 0) {
-            sliceOutput.writeByte((int) ((value & 0x7f) | 0x80));
+            buffer.writeByte((int) ((value & 0x7f) | 0x80));
             value >>>= 7;
         }
-        sliceOutput.writeByte((int) value);
+        buffer.writeByte((int) value);
     }
 
-    public static int readVariableLengthInt(SliceInput sliceInput) {
+    public static int readVariableLengthInt(ByteBuf buffer) {
         int result = 0;
         for (int shift = 0; shift <= 28; shift += 7) {
-            int b = sliceInput.readUnsignedByte();
+            int b = buffer.readUnsignedByte();
 
             // add the lower 7 bits to the result
             result |= ((b & 0x7f) << shift);
@@ -107,7 +109,7 @@ public final class VariableLengthQuantity {
         throw new NumberFormatException("last byte of variable length int has high bit set");
     }
 
-    public static long readVariableLengthLong(SliceInput sliceInput) {
+    public static long readVariableLengthLong(ByteBuf sliceInput) {
         long result = 0;
         for (int shift = 0; shift <= 63; shift += 7) {
             long b = sliceInput.readUnsignedByte();

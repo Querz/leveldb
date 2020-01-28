@@ -17,34 +17,31 @@
  */
 package org.iq80.leveldb.table;
 
-import org.iq80.leveldb.util.Slice;
+import io.netty.buffer.ByteBuf;
 
-public class BytewiseComparator
-        implements UserComparator {
+public class BytewiseComparator implements UserComparator {
     @Override
     public String name() {
         return "leveldb.BytewiseComparator";
     }
 
     @Override
-    public int compare(Slice sliceA, Slice sliceB) {
+    public int compare(ByteBuf sliceA, ByteBuf sliceB) {
         return sliceA.compareTo(sliceB);
     }
 
     @Override
-    public Slice findShortestSeparator(
-            Slice start,
-            Slice limit) {
+    public ByteBuf findShortestSeparator(ByteBuf start, ByteBuf limit) {
         // Find length of common prefix
         int sharedBytes = BlockBuilder.calculateSharedBytes(start, limit);
 
         // Do not shorten if one string is a prefix of the other
-        if (sharedBytes < Math.min(start.length(), limit.length())) {
+        if (sharedBytes < Math.min(start.readableBytes(), limit.readableBytes())) {
             // if we can add one to the last shared byte without overflow and the two keys differ by more than
             // one increment at this location.
             int lastSharedByte = start.getUnsignedByte(sharedBytes);
             if (lastSharedByte < 0xff && lastSharedByte + 1 < limit.getUnsignedByte(sharedBytes)) {
-                Slice result = start.copySlice(0, sharedBytes + 1);
+                ByteBuf result = start.slice(0, sharedBytes + 1).copy();
                 result.setByte(sharedBytes, lastSharedByte + 1);
 
                 assert (compare(result, limit) < 0) : "start must be less than last limit";
@@ -55,12 +52,12 @@ public class BytewiseComparator
     }
 
     @Override
-    public Slice findShortSuccessor(Slice key) {
+    public ByteBuf findShortSuccessor(ByteBuf key) {
         // Find first character that can be incremented
-        for (int i = 0; i < key.length(); i++) {
+        for (int i = 0; i < key.readableBytes(); i++) {
             int b = key.getUnsignedByte(i);
             if (b != 0xff) {
-                Slice result = key.copySlice(0, i + 1);
+                ByteBuf result = key.slice(0, i + 1).copy();
                 result.setByte(i, b + 1);
                 return result;
             }

@@ -17,25 +17,24 @@
  */
 package org.iq80.leveldb.impl;
 
-import org.iq80.leveldb.util.Slice;
+import io.netty.buffer.ByteBuf;
 
-import java.io.File;
+import java.io.Closeable;
 import java.io.IOException;
+import java.nio.file.Path;
 
-public interface LogWriter {
+public interface LogWriter extends Closeable {
+
     boolean isClosed();
 
-    void close()
-            throws IOException;
+    void close() throws IOException;
 
-    void delete()
-            throws IOException;
+    void delete() throws IOException;
 
-    File getFile();
+    Path getPath();
 
     long getFileNumber();
 
     // Writes a stream of chunks such that no chunk is split across a block boundary
-    void addRecord(Slice record, boolean force)
-            throws IOException;
+    void addRecord(ByteBuf record, boolean force) throws IOException;
 }

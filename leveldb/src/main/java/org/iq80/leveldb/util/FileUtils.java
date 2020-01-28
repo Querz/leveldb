@@ -19,11 +19,16 @@ package org.iq80.leveldb.util;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.io.Files;
 
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.stream.Stream;
 
 public final class FileUtils {
     private static final int TEMP_DIR_ATTEMPTS = 10000;
@@ -31,28 +36,12 @@ public final class FileUtils {
     private FileUtils() {
     }
 
-    public static boolean isSymbolicLink(File file) {
-        try {
-            File canonicalFile = file.getCanonicalFile();
-            File absoluteFile = file.getAbsoluteFile();
-            File parentFile = file.getParentFile();
-            // a symbolic link has a different name between the canonical and absolute path
-            return !canonicalFile.getName().equals(absoluteFile.getName()) ||
-                    // or the canonical parent path is not the same as the file's parent path,
-                    // provided the file has a parent path
-                    parentFile != null && !parentFile.getCanonicalPath().equals(canonicalFile.getParent());
-        } catch (IOException e) {
-            // error on the side of caution
-            return true;
-        }
+    public static boolean isSymbolicLink(Path file) {
+        return Files.isSymbolicLink(file);
     }
 
-    public static ImmutableList<File> listFiles(File dir) {
-        File[] files = dir.listFiles();
-        if (files == null) {
-            return ImmutableList.of();
-        }
-        return ImmutableList.copyOf(files);
+    public static DirectoryStream<Path> listFiles(Path dir) throws IOException {
+        return Files.newDirectoryStream(dir);
     }
 
     public static ImmutableList<File> listFiles(File dir, FilenameFilter filter) {
@@ -85,8 +74,8 @@ public final class FileUtils {
                 + baseName + "0 to " + baseName + (TEMP_DIR_ATTEMPTS - 1) + ')');
     }
 
-    public static boolean deleteDirectoryContents(File directory) {
-        Preconditions.checkArgument(directory.isDirectory(), "Not a directory: %s", directory);
+    public static boolean deleteDirectoryContents(Path directory) throws IOException {
+        Preconditions.checkArgument(Files.isDirectory(directory), "Not a directory: %s", directory);
 
         // Don't delete symbolic link directories
         if (isSymbolicLink(directory)) {
@@ -94,41 +83,42 @@ public final class FileUtils {
         }
 
         boolean success = true;
-        for (File file : listFiles(directory)) {
+        for (Path file : listFiles(directory)) {
             success = deleteRecursively(file) && success;
         }
         return success;
     }
 
-    public static boolean deleteRecursively(File file) {
+    public static boolean deleteRecursively(Path file) throws IOException {
         boolean success = true;
-        if (file.isDirectory()) {
+        if (Files.isDirectory(file)) {
             success = deleteDirectoryContents(file);
         }
 
-        return file.delete() && success;
+        Files.deleteIfExists(file);
+        return success;
     }
 
-    public static boolean copyDirectoryContents(File src, File target) {
-        Preconditions.checkArgument(src.isDirectory(), "Source dir is not a directory: %s", src);
+    public static boolean copyDirectoryContents(Path src, Path target) throws IOException {
+        Preconditions.checkArgument(Files.isDirectory(src), "Source dir is not a directory: %s", src);
 
         // Don't delete symbolic link directories
         if (isSymbolicLink(src)) {
             return false;
         }
 
-        target.mkdirs();
-        Preconditions.checkArgument(target.isDirectory(), "Target dir is not a directory: %s", src);
+        Files.createDirectories(target);
+        Preconditions.checkArgument(Files.isDirectory(target), "Target dir is not a directory: %s", src);
 
         boolean success = true;
-        for (File file : listFiles(src)) {
-            success = copyRecursively(file, new File(target, file.getName())) && success;
+        for (Path file : listFiles(src)) {
+            success = copyRecursively(file, target.resolve(file.getFileName())) && success;
         }
         return success;
     }
 
-    public static boolean copyRecursively(File src, File target) {
-        if (src.isDirectory()) {
+    public static boolean copyRecursively(Path src, Path target) throws IOException {
+        if (Files.isDirectory(src)) {
             return copyDirectoryContents(src, target);
         } else {
             try {
@@ -140,27 +130,27 @@ public final class FileUtils {
         }
     }
 
-    public static File newFile(String parent, String... paths) {
+    public static Path newFile(String parent, String... paths) {
         Preconditions.checkNotNull(parent, "parent is null");
         Preconditions.checkNotNull(paths, "paths is null");
 
-        return newFile(new File(parent), ImmutableList.copyOf(paths));
+        return newFile(Paths.get(parent), ImmutableList.copyOf(paths));
     }
 
-    public static File newFile(File parent, String... paths) {
+    public static Path newFile(Path parent, String... paths) {
         Preconditions.checkNotNull(parent, "parent is null");
         Preconditions.checkNotNull(paths, "paths is null");
 
         return newFile(parent, ImmutableList.copyOf(paths));
     }
 
-    public static File newFile(File parent, Iterable<String> paths) {
+    public static Path newFile(Path parent, Iterable<String> paths) {
         Preconditions.checkNotNull(parent, "parent is null");
         Preconditions.checkNotNull(paths, "paths is null");
 
-        File result = parent;
+        Path result = parent;
         for (String path : paths) {
-            result = new File(result, path);
+            result = result.resolve(path);
         }
         return result;
     }

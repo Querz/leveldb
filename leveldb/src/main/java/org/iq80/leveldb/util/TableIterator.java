@@ -17,14 +17,14 @@
  */
 package org.iq80.leveldb.util;
 
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.table.Block;
 import org.iq80.leveldb.table.BlockIterator;
 import org.iq80.leveldb.table.Table;
 
 import java.util.Map.Entry;
 
-public final class TableIterator
-        extends AbstractSeekingIterator<Slice, Slice> {
+public final class TableIterator extends AbstractSeekingIterator<ByteBuf, ByteBuf> {
     private final Table table;
     private final BlockIterator blockIterator;
     private BlockIterator current;
@@ -43,7 +43,7 @@ public final class TableIterator
     }
 
     @Override
-    protected void seekInternal(Slice targetKey) {
+    protected void seekInternal(ByteBuf targetKey) {
         // seek the index to the block containing the key
         blockIterator.seek(targetKey);
 
@@ -58,7 +58,7 @@ public final class TableIterator
     }
 
     @Override
-    protected Entry<Slice, Slice> getNextElement() {
+    protected Entry<ByteBuf, ByteBuf> getNextElement() {
         // note: it must be here & not where 'current' is assigned,
         // because otherwise we'll have called inputs.next() before throwing
         // the first NPE, and the next time around we'll call inputs.next()
@@ -88,18 +88,16 @@ public final class TableIterator
     }
 
     private BlockIterator getNextBlock() {
-        Slice blockHandle = blockIterator.next().getValue();
+        ByteBuf blockHandle = blockIterator.next().getValue();
         Block dataBlock = table.openBlock(blockHandle);
         return dataBlock.iterator();
     }
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("ConcatenatingIterator");
-        sb.append("{blockIterator=").append(blockIterator);
-        sb.append(", current=").append(current);
-        sb.append('}');
-        return sb.toString();
+        return "ConcatenatingIterator" +
+                "(blockIterator=" + blockIterator +
+                ", current=" + current +
+                ')';
     }
 }

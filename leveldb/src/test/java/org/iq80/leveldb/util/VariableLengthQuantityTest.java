@@ -17,24 +17,26 @@
  */
 package org.iq80.leveldb.util;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.assertEquals;
 
 public class VariableLengthQuantityTest {
     private static void testVariableLengthInt(int value) {
-        SliceOutput output = Slices.allocate(5).output();
+        ByteBuf output = Unpooled.buffer(5);
         VariableLengthQuantity.writeVariableLengthInt(value, output);
-        assertEquals(output.size(), VariableLengthQuantity.variableLengthSize(value));
-        int actual = VariableLengthQuantity.readVariableLengthInt(output.slice().input());
+        assertEquals(output.writerIndex(), VariableLengthQuantity.variableLengthSize(value));
+        int actual = VariableLengthQuantity.readVariableLengthInt(output.slice());
         assertEquals(actual, value);
     }
 
     private static void testVariableLengthLong(long value) {
-        SliceOutput output = Slices.allocate(12).output();
+        ByteBuf output = Unpooled.buffer(12);
         VariableLengthQuantity.writeVariableLengthLong(value, output);
-        assertEquals(output.size(), VariableLengthQuantity.variableLengthSize(value));
-        long actual = VariableLengthQuantity.readVariableLengthLong(output.slice().input());
+        assertEquals(output.writerIndex(), VariableLengthQuantity.variableLengthSize(value));
+        long actual = VariableLengthQuantity.readVariableLengthLong(output.slice());
         assertEquals(actual, value);
     }
 

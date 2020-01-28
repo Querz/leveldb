@@ -17,16 +17,22 @@
  */
 package org.iq80.leveldb.impl;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import org.iq80.leveldb.*;
+import org.iq80.leveldb.util.Buffers;
 import org.iq80.leveldb.util.FileUtils;
 import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
@@ -36,7 +42,16 @@ import static org.testng.Assert.assertTrue;
 public class NativeInteropTest {
     private static final AtomicInteger NEXT_ID = new AtomicInteger();
 
-    private final File databaseDir = FileUtils.createTempDir("leveldb");
+    private final Path databaseDir;
+
+    {
+        try {
+            databaseDir = Files.createTempDirectory("leveldb");
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
     private final DBFactory iq80factory = Iq80DBFactory.factory;
     private final DBFactory jnifactory;
 
@@ -50,6 +65,10 @@ public class NativeInteropTest {
             // to avoid test failures.
         }
         this.jnifactory = jnifactory;
+    }
+
+    public static ByteBuf buffer(String value) {
+        return Buffers.encodeString(value);
     }
 
     public static byte[] bytes(String value) {
@@ -74,15 +93,16 @@ public class NativeInteropTest {
         }
     }
 
-    public static void assertEquals(byte[] arg1, byte[] arg2) {
-        assertTrue(Arrays.equals(arg1, arg2), asString(arg1) + " != " + asString(arg2));
+    public static void assertEquals(ByteBuf arg1, ByteBuf arg2) {
+        assertTrue(arg1 != null && ByteBufUtil.equals(arg1, arg2),
+                (arg1 == null ? "null" : arg1.toString(UTF_8)) + " != " + arg2.toString(UTF_8));
     }
 
-    File getTestDirectory(String name)
+    Path getTestDirectory(String name)
             throws IOException {
-        File rc = new File(databaseDir, name);
+        Path rc = databaseDir.resolve(name);
         iq80factory.destroy(rc, new Options().createIfMissing(true));
-        rc.mkdirs();
+        Files.createDirectories(rc);
         return rc;
     }
 
@@ -114,33 +134,33 @@ public class NativeInteropTest {
             throws IOException, DBException {
         Options options = new Options().createIfMissing(true);
 
-        File path = getTestDirectory(getClass().getName() + "_" + NEXT_ID.incrementAndGet());
+        Path path = getTestDirectory(getClass().getName() + "_" + NEXT_ID.incrementAndGet());
         DB db = firstFactory.open(path, options);
 
         WriteOptions wo = new WriteOptions().sync(false);
         ReadOptions ro = new ReadOptions().fillCache(true).verifyChecksums(true);
-        db.put(bytes("Tampa"), bytes("green"));
-        db.put(bytes("London"), bytes("red"));
-        db.put(bytes("New York"), bytes("blue"));
+        db.put(bytes("Tampa"), buffer("green"));
+        db.put(bytes("London"), buffer("red"));
+        db.put(bytes("New York"), buffer("blue"));
 
         db.close();
         db = secondFactory.open(path, options);
 
-        assertEquals(db.get(bytes("Tampa"), ro), bytes("green"));
-        assertEquals(db.get(bytes("London"), ro), bytes("red"));
-        assertEquals(db.get(bytes("New York"), ro), bytes("blue"));
+        assertEquals(db.get(bytes("Tampa"), ro), buffer("green"));
+        assertEquals(db.get(bytes("London"), ro), buffer("red"));
+        assertEquals(db.get(bytes("New York"), ro), buffer("blue"));
 
         db.delete(bytes("New York"), wo);
 
-        assertEquals(db.get(bytes("Tampa"), ro), bytes("green"));
-        assertEquals(db.get(bytes("London"), ro), bytes("red"));
+        assertEquals(db.get(bytes("Tampa"), ro), buffer("green"));
+        assertEquals(db.get(bytes("London"), ro), buffer("red"));
         assertNull(db.get(bytes("New York"), ro));
 
         db.close();
         db = firstFactory.open(path, options);
 
-        assertEquals(db.get(bytes("Tampa"), ro), bytes("green"));
-        assertEquals(db.get(bytes("London"), ro), bytes("red"));
+        assertEquals(db.get(bytes("Tampa"), ro), buffer("green"));
+        assertEquals(db.get(bytes("London"), ro), buffer("red"));
         assertNull(db.get(bytes("New York"), ro));
 
         db.close();

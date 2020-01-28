@@ -17,21 +17,20 @@
  */
 package org.iq80.leveldb.impl;
 
-import com.google.common.base.Charsets;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.*;
-import com.google.common.io.Files;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.table.UserComparator;
 import org.iq80.leveldb.util.InternalIterator;
 import org.iq80.leveldb.util.Level0Iterator;
 import org.iq80.leveldb.util.MergingIterator;
-import org.iq80.leveldb.util.Slice;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,8 +40,7 @@ import static com.google.common.collect.Lists.newArrayListWithCapacity;
 import static org.iq80.leveldb.impl.DbConstants.NUM_LEVELS;
 import static org.iq80.leveldb.impl.LogMonitors.throwExceptionMonitor;
 
-public class VersionSet
-        implements SeekingIterable<InternalKey, Slice> {
+public class VersionSet implements SeekingIterable<InternalKey, ByteBuf> {
     public static final int TARGET_FILE_SIZE = 2 * 1048576;
     // Maximum bytes of overlaps in grandparent (i.e., level+2) before we
     // stop building a single file in a level.level+1 compaction.
@@ -50,7 +48,7 @@ public class VersionSet
     private static final int L0_COMPACTION_TRIGGER = 4;
     private final AtomicLong nextFileNumber = new AtomicLong(2);
     private final Map<Version, Object> activeVersions = new MapMaker().weakKeys().makeMap();
-    private final File databaseDir;
+    private final Path databasePath;
     private final TableCache tableCache;
     private final InternalKeyComparator internalKeyComparator;
     private final Map<Integer, InternalKey> compactPointers = Maps.newTreeMap();
@@ -61,9 +59,9 @@ public class VersionSet
     private long prevLogNumber;
     private LogWriter descriptorLog;
 
-    public VersionSet(File databaseDir, TableCache tableCache, InternalKeyComparator internalKeyComparator)
+    public VersionSet(Path databasePath, TableCache tableCache, InternalKeyComparator internalKeyComparator)
             throws IOException {
-        this.databaseDir = databaseDir;
+        this.databasePath = databasePath;
         this.tableCache = tableCache;
         this.internalKeyComparator = internalKeyComparator;
         appendVersion(new Version(this));
@@ -95,26 +93,27 @@ public class VersionSet
         return TARGET_FILE_SIZE;  // We could vary per level to reduce number of files?
     }
 
-    private void initializeIfNeeded()
-            throws IOException {
-        File currentFile = new File(databaseDir, Filename.currentFileName());
+    private void initializeIfNeeded() throws IOException {
+        Path currentFile = databasePath.resolve(Filename.currentFileName());
 
-        if (!currentFile.exists()) {
+        if (!Files.isReadable(currentFile)) {
             VersionEdit edit = new VersionEdit();
             edit.setComparatorName(internalKeyComparator.name());
             edit.setLogNumber(prevLogNumber);
             edit.setNextFileNumber(nextFileNumber.get());
             edit.setLastSequenceNumber(lastSequence);
 
-            LogWriter log = Logs.createLogWriter(new File(databaseDir, Filename.descriptorFileName(manifestFileNumber)), manifestFileNumber);
+            LogWriter log = Logs.createLogWriter(databasePath.resolve(Filename.descriptorFileName(manifestFileNumber)), manifestFileNumber);
+            ByteBuf editBuf = edit.encode();
             try {
                 writeSnapshot(log);
-                log.addRecord(edit.encode(), false);
+                log.addRecord(editBuf, false);
             } finally {
                 log.close();
+                editBuf.release();
             }
 
-            Filename.setCurrentFile(databaseDir, log.getFileNumber());
+            Filename.setCurrentFile(databasePath, log.getFileNumber());
         }
     }
 
@@ -210,7 +209,7 @@ public class VersionSet
         return current.get(key);
     }
 
-    public boolean overlapInLevel(int level, Slice smallestUserKey, Slice largestUserKey) {
+    public boolean overlapInLevel(int level, ByteBuf smallestUserKey, ByteBuf largestUserKey) {
         return current.overlapInLevel(level, smallestUserKey, largestUserKey);
     }
 
@@ -260,26 +259,26 @@ public class VersionSet
             // a temporary file that contains a snapshot of the current version.
             if (descriptorLog == null) {
                 edit.setNextFileNumber(nextFileNumber.get());
-                descriptorLog = Logs.createLogWriter(new File(databaseDir, Filename.descriptorFileName(manifestFileNumber)), manifestFileNumber);
+                descriptorLog = Logs.createLogWriter(databasePath.resolve(Filename.descriptorFileName(manifestFileNumber)), manifestFileNumber);
                 writeSnapshot(descriptorLog);
                 createdNewManifest = true;
             }
 
             // Write new record to MANIFEST log
-            Slice record = edit.encode();
+            ByteBuf record = edit.encode();
             descriptorLog.addRecord(record, true);
 
             // If we just created a new descriptor file, install it by writing a
             // new CURRENT file that points to it.
             if (createdNewManifest) {
-                Filename.setCurrentFile(databaseDir, descriptorLog.getFileNumber());
+                Filename.setCurrentFile(databasePath, descriptorLog.getFileNumber());
             }
         } catch (IOException e) {
             // New manifest file was not installed, so clean up state and delete the file
             if (createdNewManifest) {
                 descriptorLog.close();
                 // todo add delete method to LogWriter
-                new File(databaseDir, Filename.logFileName(descriptorLog.getFileNumber())).delete();
+                Files.delete(databasePath.resolve(Filename.logFileName(descriptorLog.getFileNumber())));
                 descriptorLog = null;
             }
             throw e;
@@ -291,8 +290,7 @@ public class VersionSet
         prevLogNumber = edit.getPreviousLogNumber();
     }
 
-    private void writeSnapshot(LogWriter log)
-            throws IOException {
+    private void writeSnapshot(LogWriter log) throws IOException {
         // Save metadata
         VersionEdit edit = new VersionEdit();
         edit.setComparatorName(internalKeyComparator.name());
@@ -303,34 +301,34 @@ public class VersionSet
         // Save files
         edit.addFiles(current.getFiles());
 
-        Slice record = edit.encode();
-        log.addRecord(record, false);
+        ByteBuf record = edit.encode();
+        try {
+            log.addRecord(record, false);
+        } finally {
+            record.release();
+        }
     }
 
-    public void recover()
-            throws IOException {
+    public void recover() throws IOException {
         // Read "CURRENT" file, which contains a pointer to the current manifest file
-        File currentFile = new File(databaseDir, Filename.currentFileName());
-        Preconditions.checkState(currentFile.exists(), "CURRENT file does not exist");
+        Path currentFile = databasePath.resolve(Filename.currentFileName());
+        Preconditions.checkState(Files.exists(currentFile), "CURRENT file does not exist");
 
-        String currentName = Files.toString(currentFile, Charsets.UTF_8);
+        String currentName = new String(Files.readAllBytes(currentFile), StandardCharsets.UTF_8);
         if (currentName.isEmpty() || currentName.charAt(currentName.length() - 1) != '\n') {
             throw new IllegalStateException("CURRENT file does not end with newline");
         }
         currentName = currentName.substring(0, currentName.length() - 1);
 
         // open file channel
-        try (FileInputStream fis = new FileInputStream(new File(databaseDir, currentName));
-             FileChannel fileChannel = fis.getChannel()) {
+        try (LogReader reader = new LogReader(databasePath.resolve(currentName), throwExceptionMonitor(), true, 0)) {
             // read log edit log
             Long nextFileNumber = null;
             Long lastSequence = null;
             Long logNumber = null;
             Long prevLogNumber = null;
             Builder builder = new Builder(this, current);
-
-            LogReader reader = new LogReader(fileChannel, throwExceptionMonitor(), true, 0);
-            for (Slice record = reader.readRecord(); record != null; record = reader.readRecord()) {
+            for (ByteBuf record = reader.readRecord(); record != null; record = reader.readRecord()) {
                 // read version edit
                 VersionEdit edit = new VersionEdit(record);
 
@@ -565,8 +563,8 @@ public class VersionSet
 
     List<FileMetaData> getOverlappingInputs(int level, InternalKey begin, InternalKey end) {
         ImmutableList.Builder<FileMetaData> files = ImmutableList.builder();
-        Slice userBegin = begin.getUserKey();
-        Slice userEnd = end.getUserKey();
+        ByteBuf userBegin = begin.getUserKey();
+        ByteBuf userEnd = end.getUserKey();
         UserComparator userComparator = internalKeyComparator.getUserComparator();
         for (FileMetaData fileMetaData : current.getFiles(level)) {
             if (userComparator.compare(fileMetaData.getLargest().getUserKey(), userBegin) < 0 ||

@@ -17,14 +17,16 @@
  */
 package org.iq80.leveldb;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.Closeable;
 
 /**
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
-public interface WriteBatch
-        extends Closeable {
-    WriteBatch put(byte[] key, byte[] value);
+public interface WriteBatch extends Closeable {
+
+    WriteBatch put(byte[] key, ByteBuf value);
 
     WriteBatch delete(byte[] key);
 }

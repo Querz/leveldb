@@ -18,6 +18,7 @@
 package org.iq80.leveldb.util;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
 
 import java.util.Arrays;
 
@@ -64,19 +65,17 @@ public class IntVector {
         return Arrays.copyOf(values, size);
     }
 
-    public void write(SliceOutput sliceOutput) {
+    public void write(ByteBuf buffer) {
         for (int index = 0; index < size; index++) {
-            sliceOutput.writeInt(values[index]);
+            buffer.writeInt(values[index]);
         }
     }
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("IntVector");
-        sb.append("{size=").append(size);
-        sb.append(", values=").append(Arrays.toString(values));
-        sb.append('}');
-        return sb.toString();
+        return "IntVector" +
+                "(size=" + size +
+                ", values=" + Arrays.toString(values) +
+                ')';
     }
 }

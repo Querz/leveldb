@@ -18,20 +18,19 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.collect.Maps;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.util.AbstractSeekingIterator;
 import org.iq80.leveldb.util.DbIterator;
-import org.iq80.leveldb.util.Slice;
 
 import java.util.Comparator;
 import java.util.Map.Entry;
 
-public final class SnapshotSeekingIterator
-        extends AbstractSeekingIterator<Slice, Slice> {
+public final class SnapshotSeekingIterator extends AbstractSeekingIterator<ByteBuf, ByteBuf> {
     private final DbIterator iterator;
     private final SnapshotImpl snapshot;
-    private final Comparator<Slice> userComparator;
+    private final Comparator<ByteBuf> userComparator;
 
-    public SnapshotSeekingIterator(DbIterator iterator, SnapshotImpl snapshot, Comparator<Slice> userComparator) {
+    public SnapshotSeekingIterator(DbIterator iterator, SnapshotImpl snapshot, Comparator<ByteBuf> userComparator) {
         this.iterator = iterator;
         this.snapshot = snapshot;
         this.userComparator = userComparator;
@@ -49,18 +48,18 @@ public final class SnapshotSeekingIterator
     }
 
     @Override
-    protected void seekInternal(Slice targetKey) {
+    protected void seekInternal(ByteBuf targetKey) {
         iterator.seek(new InternalKey(targetKey, snapshot.getLastSequence(), ValueType.VALUE));
         findNextUserEntry(null);
     }
 
     @Override
-    protected Entry<Slice, Slice> getNextElement() {
+    protected Entry<ByteBuf, ByteBuf> getNextElement() {
         if (!iterator.hasNext()) {
             return null;
         }
 
-        Entry<InternalKey, Slice> next = iterator.next();
+        Entry<InternalKey, ByteBuf> next = iterator.next();
 
         // find the next user entry after the key we are about to return
         findNextUserEntry(next.getKey().getUserKey());
@@ -68,7 +67,7 @@ public final class SnapshotSeekingIterator
         return Maps.immutableEntry(next.getKey().getUserKey(), next.getValue());
     }
 
-    private void findNextUserEntry(Slice deletedKey) {
+    private void findNextUserEntry(ByteBuf deletedKey) {
         // if there are no more entries, we are done
         if (!iterator.hasNext()) {
             return;
@@ -99,11 +98,9 @@ public final class SnapshotSeekingIterator
 
     @Override
     public String toString() {
-        final StringBuilder sb = new StringBuilder();
-        sb.append("SnapshotSeekingIterator");
-        sb.append("{snapshot=").append(snapshot);
-        sb.append(", iterator=").append(iterator);
-        sb.append('}');
-        return sb.toString();
+        return "SnapshotSeekingIterator" +
+                "(snapshot=" + snapshot +
+                ", iterator=" + iterator +
+                ')';
     }
 }

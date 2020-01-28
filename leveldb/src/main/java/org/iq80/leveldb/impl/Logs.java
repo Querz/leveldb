@@ -17,34 +17,24 @@
  */
 package org.iq80.leveldb.impl;
 
-import org.iq80.leveldb.util.PureJavaCrc32C;
-import org.iq80.leveldb.util.Slice;
+import com.nukkitx.natives.crc32c.Crc32C;
+import com.nukkitx.natives.util.Natives;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 
 public final class Logs {
+
+    public static final ThreadLocal<Crc32C> CRC32C = ThreadLocal.withInitial(Natives.CRC32C::get);
+
     private Logs() {
     }
 
-    public static LogWriter createLogWriter(File file, long fileNumber)
-            throws IOException {
+    public static LogWriter createLogWriter(Path path, long fileNumber) throws IOException {
         if (Iq80DBFactory.USE_MMAP) {
-            return new MMapLogWriter(file, fileNumber);
+            return new MMapLogWriter(path, fileNumber);
         } else {
-            return new FileChannelLogWriter(file, fileNumber);
+            return new FileChannelLogWriter(path, fileNumber);
         }
-    }
-
-    public static int getChunkChecksum(int chunkTypeId, Slice slice) {
-        return getChunkChecksum(chunkTypeId, slice.getRawArray(), slice.getRawOffset(), slice.length());
-    }
-
-    public static int getChunkChecksum(int chunkTypeId, byte[] buffer, int offset, int length) {
-        // Compute the crc of the record type and the payload.
-        PureJavaCrc32C crc32C = new PureJavaCrc32C();
-        crc32C.update(chunkTypeId);
-        crc32C.update(buffer, offset, length);
-        return crc32C.getMaskedValue();
     }
 }

@@ -20,8 +20,8 @@ package org.iq80.leveldb.impl;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.PeekingIterator;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.util.InternalIterator;
-import org.iq80.leveldb.util.Slice;
 
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -29,9 +29,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.iq80.leveldb.util.SizeOf.SIZE_OF_LONG;
 
-public class MemTable
-        implements SeekingIterable<InternalKey, Slice> {
-    private final ConcurrentSkipListMap<InternalKey, Slice> table;
+public class MemTable implements SeekingIterable<InternalKey, ByteBuf> {
+    private final ConcurrentSkipListMap<InternalKey, ByteBuf> table;
     private final AtomicLong approximateMemoryUsage = new AtomicLong();
 
     public MemTable(InternalKeyComparator internalKeyComparator) {
@@ -46,7 +45,7 @@ public class MemTable
         return approximateMemoryUsage.get();
     }
 
-    public void add(long sequenceNumber, ValueType valueType, Slice key, Slice value) {
+    public void add(long sequenceNumber, ValueType valueType, ByteBuf key, ByteBuf value) {
         Preconditions.checkNotNull(valueType, "valueType is null");
         Preconditions.checkNotNull(key, "key is null");
         Preconditions.checkNotNull(valueType, "valueType is null");
@@ -54,14 +53,14 @@ public class MemTable
         InternalKey internalKey = new InternalKey(key, sequenceNumber, valueType);
         table.put(internalKey, value);
 
-        approximateMemoryUsage.addAndGet(key.length() + SIZE_OF_LONG + value.length());
+        approximateMemoryUsage.addAndGet(key.readableBytes() + SIZE_OF_LONG + value.readableBytes());
     }
 
     public LookupResult get(LookupKey key) {
         Preconditions.checkNotNull(key, "key is null");
 
         InternalKey internalKey = key.getInternalKey();
-        Entry<InternalKey, Slice> entry = table.ceilingEntry(internalKey);
+        Entry<InternalKey, ByteBuf> entry = table.ceilingEntry(internalKey);
         if (entry == null) {
             return null;
         }
@@ -82,9 +81,8 @@ public class MemTable
         return new MemTableIterator();
     }
 
-    public class MemTableIterator
-            implements InternalIterator {
-        private PeekingIterator<Entry<InternalKey, Slice>> iterator;
+    public class MemTableIterator implements InternalIterator {
+        private PeekingIterator<Entry<InternalKey, ByteBuf>> iterator;
 
         public MemTableIterator() {
             iterator = Iterators.peekingIterator(table.entrySet().iterator());
@@ -107,13 +105,13 @@ public class MemTable
 
         @Override
         public InternalEntry peek() {
-            Entry<InternalKey, Slice> entry = iterator.peek();
+            Entry<InternalKey, ByteBuf> entry = iterator.peek();
             return new InternalEntry(entry.getKey(), entry.getValue());
         }
 
         @Override
         public InternalEntry next() {
-            Entry<InternalKey, Slice> entry = iterator.next();
+            Entry<InternalKey, ByteBuf> entry = iterator.next();
             return new InternalEntry(entry.getKey(), entry.getValue());
         }
 

@@ -19,31 +19,34 @@ package org.iq80.leveldb.table;
 
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
-import org.iq80.leveldb.util.DynamicSliceOutput;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.util.ReferenceCountUtil;
+import io.netty.util.ReferenceCounted;
 import org.iq80.leveldb.util.IntVector;
-import org.iq80.leveldb.util.Slice;
 import org.iq80.leveldb.util.VariableLengthQuantity;
 
 import java.util.Comparator;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.iq80.leveldb.util.SizeOf.SIZE_OF_INT;
 
-public class BlockBuilder {
+public class BlockBuilder implements ReferenceCounted {
     private final int blockRestartInterval;
     private final IntVector restartPositions;
-    private final Comparator<Slice> comparator;
-    private final DynamicSliceOutput block;
+    private final Comparator<ByteBuf> comparator;
+    private final ByteBuf block;
     private int entryCount;
     private int restartBlockEntryCount;
     private boolean finished;
-    private Slice lastKey;
+    private ByteBuf lastKey;
 
-    public BlockBuilder(int estimatedSize, int blockRestartInterval, Comparator<Slice> comparator) {
+    public BlockBuilder(int estimatedSize, int blockRestartInterval, Comparator<ByteBuf> comparator) {
         Preconditions.checkArgument(estimatedSize >= 0, "estimatedSize is negative");
         Preconditions.checkArgument(blockRestartInterval >= 0, "blockRestartInterval is negative");
         Preconditions.checkNotNull(comparator, "comparator is null");
 
-        this.block = new DynamicSliceOutput(estimatedSize);
+        this.block = ByteBufAllocator.DEFAULT.ioBuffer(estimatedSize);
         this.blockRestartInterval = blockRestartInterval;
         this.comparator = comparator;
 
@@ -51,11 +54,11 @@ public class BlockBuilder {
         restartPositions.add(0);  // first restart point must be 0
     }
 
-    public static int calculateSharedBytes(Slice leftKey, Slice rightKey) {
+    public static int calculateSharedBytes(ByteBuf leftKey, ByteBuf rightKey) {
         int sharedKeyBytes = 0;
 
         if (leftKey != null && rightKey != null) {
-            int minSharedKeyBytes = Ints.min(leftKey.length(), rightKey.length());
+            int minSharedKeyBytes = Ints.min(leftKey.writerIndex(), rightKey.writerIndex());
             while (sharedKeyBytes < minSharedKeyBytes && leftKey.getByte(sharedKeyBytes) == rightKey.getByte(sharedKeyBytes)) {
                 sharedKeyBytes++;
             }
@@ -65,11 +68,12 @@ public class BlockBuilder {
     }
 
     public void reset() {
-        block.reset();
+        block.clear();
         entryCount = 0;
         restartPositions.clear();
         restartPositions.add(0); // first restart point must be 0
         restartBlockEntryCount = 0;
+        ReferenceCountUtil.release(lastKey);
         lastKey = null;
         finished = false;
     }
@@ -85,15 +89,15 @@ public class BlockBuilder {
     public int currentSizeEstimate() {
         // no need to estimate if closed
         if (finished) {
-            return block.size();
+            return block.writerIndex();
         }
 
         // no records is just a single int
-        if (block.size() == 0) {
+        if (block.writerIndex() == 0) {
             return SIZE_OF_INT;
         }
 
-        return block.size() +                              // raw data buffer
+        return block.writerIndex() +                     // raw data buffer
                 restartPositions.size() * SIZE_OF_INT +    // restart positions
                 SIZE_OF_INT;                               // restart position size
     }
@@ -103,45 +107,48 @@ public class BlockBuilder {
         add(blockEntry.getKey(), blockEntry.getValue());
     }
 
-    public void add(Slice key, Slice value) {
+    public void add(ByteBuf key, ByteBuf value) {
         Preconditions.checkNotNull(key, "key is null");
         Preconditions.checkNotNull(value, "value is null");
         Preconditions.checkState(!finished, "block is finished");
         Preconditions.checkPositionIndex(restartBlockEntryCount, blockRestartInterval);
 
-        Preconditions.checkArgument(lastKey == null || comparator.compare(key, lastKey) > 0, "key must be greater than last key");
+        Preconditions.checkArgument(lastKey == null || comparator.compare(key, lastKey) > 0,
+                "key must be greater than last key (%s, %s)",
+                lastKey == null ? "" : lastKey.toString(UTF_8), key.toString(UTF_8));
 
         int sharedKeyBytes = 0;
         if (restartBlockEntryCount < blockRestartInterval) {
             sharedKeyBytes = calculateSharedBytes(key, lastKey);
         } else {
             // restart prefix compression
-            restartPositions.add(block.size());
+            restartPositions.add(block.writerIndex());
             restartBlockEntryCount = 0;
         }
 
-        int nonSharedKeyBytes = key.length() - sharedKeyBytes;
+        int nonSharedKeyBytes = key.writerIndex() - sharedKeyBytes;
 
         // write "<shared><non_shared><value_size>"
         VariableLengthQuantity.writeVariableLengthInt(sharedKeyBytes, block);
         VariableLengthQuantity.writeVariableLengthInt(nonSharedKeyBytes, block);
-        VariableLengthQuantity.writeVariableLengthInt(value.length(), block);
+        VariableLengthQuantity.writeVariableLengthInt(value.writerIndex(), block);
+
+        // update last key
+        ReferenceCountUtil.release(lastKey);
+        lastKey = key.retainedDuplicate();
 
         // write non-shared key bytes
         block.writeBytes(key, sharedKeyBytes, nonSharedKeyBytes);
 
         // write value bytes
-        block.writeBytes(value, 0, value.length());
-
-        // update last key
-        lastKey = key;
+        block.writeBytes(value, 0, value.writerIndex());
 
         // update state
         entryCount++;
         restartBlockEntryCount++;
     }
 
-    public Slice finish() {
+    public ByteBuf finish() {
         if (!finished) {
             finished = true;
 
@@ -153,5 +160,44 @@ public class BlockBuilder {
             }
         }
         return block.slice();
+    }
+
+    @Override
+    public int refCnt() {
+        return block.refCnt();
+    }
+
+    @Override
+    public BlockBuilder retain() {
+        block.retain();
+        return this;
+    }
+
+    @Override
+    public BlockBuilder retain(int i) {
+        block.retain(i);
+        return this;
+    }
+
+    @Override
+    public BlockBuilder touch() {
+        block.touch();
+        return this;
+    }
+
+    @Override
+    public BlockBuilder touch(Object o) {
+        block.touch(o);
+        return this;
+    }
+
+    @Override
+    public boolean release() {
+        return block.release();
+    }
+
+    @Override
+    public boolean release(int i) {
+        return block.release(i);
     }
 }

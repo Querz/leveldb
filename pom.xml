@@ -94,4 +94,11 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>nukkitx-repo</id>
+            <url>https://repo.nukkitx.com/maven-releases</url>
+        </repository>
+    </repositories>
 </project>

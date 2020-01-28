@@ -17,40 +17,42 @@
  */
 package org.iq80.leveldb.table;
 
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.Slices;
-import org.iq80.leveldb.util.Snappy;
-import org.iq80.leveldb.util.Zlib;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import org.iq80.leveldb.util.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
 import java.util.Comparator;
 
 import static org.iq80.leveldb.CompressionType.*;
 
 public class FileChannelTable extends Table {
-    public FileChannelTable(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
+    public FileChannelTable(Path path, FileChannel fileChannel, Comparator<ByteBuf> comparator, boolean verifyChecksums)
             throws IOException {
-        super(name, fileChannel, comparator, verifyChecksums);
+        super(path, fileChannel, comparator, verifyChecksums);
     }
 
     @Override
-    protected Footer init()
-            throws IOException {
+    protected Footer init() throws IOException {
         long size = fileChannel.size();
-        ByteBuffer footerData = read(size - Footer.ENCODED_LENGTH, Footer.ENCODED_LENGTH);
-        return Footer.readFooter(Slices.copiedBuffer(footerData));
+        ByteBuf footerData = read(size - Footer.ENCODED_LENGTH, Footer.ENCODED_LENGTH);
+        try {
+            return Footer.readFooter(footerData);
+        } finally {
+            footerData.release();
+        }
     }
 
     @SuppressWarnings({"AssignmentToStaticFieldFromInstanceMethod", "NonPrivateFieldAccessedInSynchronizedContext"})
     @Override
-    protected Block readBlock(BlockHandle blockHandle)
-            throws IOException {
+    protected Block readBlock(BlockHandle blockHandle) throws IOException {
         // read block trailer
-        ByteBuffer trailerData = read(blockHandle.getOffset() + blockHandle.getDataSize(), BlockTrailer.ENCODED_LENGTH);
-        BlockTrailer blockTrailer = BlockTrailer.readBlockTrailer(Slices.copiedBuffer(trailerData));
+        ByteBuf trailerData = read(blockHandle.getOffset() + blockHandle.getDataSize(), BlockTrailer.ENCODED_LENGTH);
+        BlockTrailer blockTrailer = BlockTrailer.readBlockTrailer(trailerData);
 
 // todo re-enable crc check when ported to support direct buffers
 //        // only verify check sums if explicitly asked by the user
@@ -65,48 +67,36 @@ public class FileChannelTable extends Table {
 
         // decompress data
 
-        ByteBuffer uncompressedBuffer = read(blockHandle.getOffset(), blockHandle.getDataSize());
-        Slice uncompressedData;
-        if (blockTrailer.getCompressionType() == ZLIB_RAW) {
-            synchronized (FileChannelTable.class) {
-                // Shit on the scratch buffer. for it to work i would need to guess maximum uncompressed data length
-                // instead i can simply use a byte array output stream which reallocs the internal memory buffer if needed
-                ByteArrayOutputStream stream = new ByteArrayOutputStream(blockHandle.getDataSize() * 5);
-                Zlib.uncompressRaw(uncompressedBuffer, stream);
-                uncompressedData = Slices.wrappedBuffer(stream.toByteArray());
-            }
-        } else if (blockTrailer.getCompressionType() == ZLIB) {
-            synchronized (FileChannelTable.class) {
-                ByteArrayOutputStream stream = new ByteArrayOutputStream(blockHandle.getDataSize() * 5);
-                Zlib.uncompress(uncompressedBuffer, stream);
-                uncompressedData = Slices.wrappedBuffer(stream.toByteArray());
-            }
-        } else if (blockTrailer.getCompressionType() == SNAPPY) {
-            synchronized (FileChannelTable.class) {
-                int uncompressedLength = uncompressedLength(uncompressedBuffer);
-                if (uncompressedScratch.capacity() < uncompressedLength) {
-                    uncompressedScratch = ByteBuffer.allocateDirect(uncompressedLength);
-                }
-                uncompressedScratch.clear();
+        ByteBuf diskBuffer = read(blockHandle.getOffset(), blockHandle.getDataSize());
 
-                Snappy.uncompress(uncompressedBuffer, uncompressedScratch);
-                uncompressedData = Slices.copiedBuffer(uncompressedScratch);
-            }
-        } else {
-            uncompressedData = Slices.copiedBuffer(uncompressedBuffer);
+        Compressor compressor = null;
+        switch (blockTrailer.getCompressionType()) {
+            case ZLIB:
+                compressor = Zlib.ZLIB;
+                break;
+            case ZLIB_RAW:
+                compressor = Zlib.ZLIB_RAW;
+                break;
+            case SNAPPY:
+                compressor = Snappy.COMPRESSOR;
         }
 
-        return new Block(uncompressedData, comparator);
+        ByteBuf uncompressedBuffer;
+        if (compressor != null) {
+            uncompressedBuffer = ByteBufAllocator.DEFAULT.ioBuffer();
+            compressor.decompress(diskBuffer, uncompressedBuffer);
+        } else {
+            uncompressedBuffer = diskBuffer.slice();
+        }
+
+        return new Block(uncompressedBuffer, comparator);
     }
 
-    private ByteBuffer read(long offset, int length)
-            throws IOException {
-        ByteBuffer uncompressedBuffer = ByteBuffer.allocate(length);
-        fileChannel.read(uncompressedBuffer, offset);
-        if (uncompressedBuffer.hasRemaining()) {
+    private ByteBuf read(long offset, int length) throws IOException {
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.ioBuffer(length);
+        if (fileChannel.read(buffer.internalNioBuffer(0, length), offset) != length) {
             throw new IOException("Could not read all the data");
         }
-        uncompressedBuffer.clear();
-        return uncompressedBuffer;
+        return buffer;
     }
 }

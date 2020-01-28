@@ -18,11 +18,9 @@
 package org.iq80.leveldb.table;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import org.iq80.leveldb.CompressionType;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.SliceInput;
-import org.iq80.leveldb.util.SliceOutput;
-import org.iq80.leveldb.util.Slices;
 
 public class BlockTrailer {
     public static final int ENCODED_LENGTH = 5;
@@ -37,22 +35,21 @@ public class BlockTrailer {
         this.crc32c = crc32c;
     }
 
-    public static BlockTrailer readBlockTrailer(Slice slice) {
-        SliceInput sliceInput = slice.input();
-        CompressionType compressionType = CompressionType.getCompressionTypeByPersistentId(sliceInput.readUnsignedByte());
-        int crc32c = sliceInput.readInt();
+    public static BlockTrailer readBlockTrailer(ByteBuf buffer) {
+        CompressionType compressionType = CompressionType.getCompressionTypeByPersistentId(buffer.readUnsignedByte());
+        int crc32c = buffer.readInt();
         return new BlockTrailer(compressionType, crc32c);
     }
 
-    public static Slice writeBlockTrailer(BlockTrailer blockTrailer) {
-        Slice slice = Slices.allocate(ENCODED_LENGTH);
-        writeBlockTrailer(blockTrailer, slice.output());
-        return slice;
+    public static ByteBuf writeBlockTrailer(BlockTrailer blockTrailer) {
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.ioBuffer(ENCODED_LENGTH);
+        writeBlockTrailer(blockTrailer, buffer);
+        return buffer;
     }
 
-    public static void writeBlockTrailer(BlockTrailer blockTrailer, SliceOutput sliceOutput) {
-        sliceOutput.writeByte(blockTrailer.getCompressionType().persistentId());
-        sliceOutput.writeInt(blockTrailer.getCrc32c());
+    public static void writeBlockTrailer(BlockTrailer blockTrailer, ByteBuf buffer) {
+        buffer.writeByte(blockTrailer.getCompressionType().persistentId());
+        buffer.writeInt(blockTrailer.getCrc32c());
     }
 
     public CompressionType getCompressionType() {

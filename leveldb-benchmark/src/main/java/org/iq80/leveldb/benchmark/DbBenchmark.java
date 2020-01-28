@@ -22,14 +22,18 @@ import com.google.common.base.Splitter;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.CharStreams;
-import com.google.common.io.Files;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.*;
 import org.iq80.leveldb.impl.DbImpl;
 import org.iq80.leveldb.util.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -43,7 +47,7 @@ import static org.iq80.leveldb.impl.DbConstants.NUM_LEVELS;
 public class DbBenchmark {
     private final boolean useExisting;
     private final Integer writeBufferSize;
-    private final File databaseDir;
+    private final Path databaseDir;
     private final double compressionRatio;
     //    Cache cache_;
     private final List<String> benchmarks;
@@ -64,8 +68,7 @@ public class DbBenchmark {
     // State kept for progress messages
     private int done;
     private int nextReport;     // When to report next
-    public DbBenchmark(Map<Flag, Object> flags)
-            throws Exception {
+    public DbBenchmark(Map<Flag, Object> flags) throws Exception {
         ClassLoader cl = DbBenchmark.class.getClassLoader();
         factory = (DBFactory) cl.loadClass(System.getProperty("leveldb.factory", "org.iq80.leveldb.impl.Iq80DBFactory")).newInstance();
         benchmarks = (List<String>) flags.get(Flag.benchmarks);
@@ -79,12 +82,12 @@ public class DbBenchmark {
         bytes = 0;
         random = new Random(301);
 
-        databaseDir = new File((String) flags.get(Flag.db));
+        databaseDir = Paths.get((String) flags.get(Flag.db));
 
         // delete heap files in db
-        for (File file : FileUtils.listFiles(databaseDir)) {
-            if (file.getName().startsWith("heap-")) {
-                file.delete();
+        for (Path file : FileUtils.listFiles(databaseDir)) {
+            if (file.getFileName().startsWith("heap-")) {
+                Files.delete(file);
             }
         }
 
@@ -104,14 +107,14 @@ public class DbBenchmark {
 
         // See if snappy is working by attempting to compress a compressible string
         String text = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy";
-        byte[] compressedText = null;
+        ByteBuf compressedText = Unpooled.buffer();
         try {
-            compressedText = Snappy.compress(text);
+            Snappy.COMPRESSOR.compress(Buffers.encodeString(text), compressedText);
         } catch (Exception ignored) {
         }
         if (compressedText == null) {
             System.out.printf("WARNING: Snappy compression is not enabled\n");
-        } else if (compressedText.length > text.length()) {
+        } else if (compressedText.readableBytes() > text.length()) {
             System.out.printf("WARNING: Snappy compression is not effective\n");
         }
     }
@@ -160,27 +163,25 @@ public class DbBenchmark {
         new DbBenchmark(flags).run();
     }
 
-    private static Slice compressibleString(Random rnd, double compressionRatio, int len) {
+    private static ByteBuf compressibleString(Random rnd, double compressionRatio, int len) {
         int raw = (int) (len * compressionRatio);
         if (raw < 1) {
             raw = 1;
         }
-        Slice rawData = generateRandomSlice(rnd, raw);
+        ByteBuf rawData = generateRandomSlice(rnd, raw);
 
         // Duplicate the random data until we have filled "len" bytes
-        Slice dst = Slices.allocate(len);
-        SliceOutput sliceOutput = dst.output();
-        while (sliceOutput.size() < len) {
-            sliceOutput.writeBytes(rawData, 0, Math.min(rawData.length(), sliceOutput.writableBytes()));
+        ByteBuf dst = ByteBufAllocator.DEFAULT.ioBuffer(len);
+        while (dst.writerIndex() < len) {
+            dst.writeBytes(rawData, 0, Math.min(rawData.readableBytes(), dst.writableBytes()));
         }
         return dst;
     }
 
-    private static Slice generateRandomSlice(Random random, int length) {
-        Slice rawData = Slices.allocate(length);
-        SliceOutput sliceOutput = rawData.output();
-        while (sliceOutput.isWritable()) {
-            sliceOutput.writeByte((byte) ((int) ' ' + random.nextInt(95)));
+    private static ByteBuf generateRandomSlice(Random random, int length) {
+        ByteBuf rawData = ByteBufAllocator.DEFAULT.ioBuffer(length);
+        while (rawData.isWritable()) {
+            rawData.writeByte((byte) ((int) ' ' + random.nextInt(95)));
         }
         return rawData;
     }
@@ -275,18 +276,17 @@ public class DbBenchmark {
         System.out.printf("------------------------------------------------\n");
     }
 
-    void printEnvironment()
-            throws IOException {
+    void printEnvironment() throws IOException {
         System.out.printf("LevelDB:    %s\n", factory);
 
         System.out.printf("Date:       %tc\n", new Date());
 
-        File cpuInfo = new File("/proc/cpuinfo");
-        if (cpuInfo.canRead()) {
+        Path cpuInfo = Paths.get("/proc/cpuinfo");
+        if (Files.isReadable(cpuInfo)) {
             int numberOfCpus = 0;
             String cpuType = null;
             String cacheSize = null;
-            for (String line : CharStreams.readLines(Files.newReader(cpuInfo, UTF_8))) {
+            for (String line : Files.readAllLines(cpuInfo, UTF_8)) {
                 ImmutableList<String> parts = ImmutableList.copyOf(Splitter.on(':').omitEmptyStrings().trimResults().limit(2).split(line));
                 if (parts.size() != 2) {
                     continue;
@@ -364,8 +364,8 @@ public class DbBenchmark {
 
     }
 
-    private void write(WriteOptions writeOptions, Order order, DBState state, int numEntries, int valueSize, int entriesPerBatch)
-            throws IOException {
+    private void write(WriteOptions writeOptions, Order order, DBState state, int numEntries, int valueSize,
+                       int entriesPerBatch) throws IOException {
         if (state == FRESH) {
             if (useExisting) {
                 message = "skipping (--use_existing_db is true)";
@@ -426,8 +426,8 @@ public class DbBenchmark {
         for (int loops = 0; loops < 5; loops++) {
             DBIterator iterator = db.iterator();
             for (int i = 0; i < reads && iterator.hasNext(); i++) {
-                Map.Entry<byte[], byte[]> entry = iterator.next();
-                bytes += entry.getKey().length + entry.getValue().length;
+                Map.Entry<byte[], ByteBuf> entry = iterator.next();
+                bytes += entry.getKey().length + entry.getValue().readableBytes();
                 finishedSingleOp();
             }
             Closeables.closeQuietly(iterator);
@@ -441,9 +441,9 @@ public class DbBenchmark {
     private void readRandom() {
         for (int i = 0; i < reads; i++) {
             byte[] key = formatNumber(random.nextInt(num));
-            byte[] value = db.get(key);
+            ByteBuf value = db.get(key);
             Preconditions.checkNotNull(value, "db.get(%s) is null", new String(key, UTF_8));
-            bytes += key.length + value.length;
+            bytes += key.length + value.readableBytes();
             finishedSingleOp();
         }
     }
@@ -452,8 +452,8 @@ public class DbBenchmark {
         int range = (num + 99) / 100;
         for (int i = 0; i < reads; i++) {
             byte[] key = formatNumber(random.nextInt(range));
-            byte[] value = db.get(key);
-            bytes += key.length + value.length;
+            ByteBuf value = db.get(key);
+            bytes += key.length + value.readableBytes();
             finishedSingleOp();
         }
     }
@@ -463,7 +463,7 @@ public class DbBenchmark {
         if (db instanceof DbImpl) {
             ((DbImpl) db).compactMemTable();
             for (int level = 0; level < NUM_LEVELS - 1; level++) {
-                ((DbImpl) db).compactRange(level, Slices.copiedBuffer("", UTF_8), Slices.copiedBuffer("~", UTF_8));
+                ((DbImpl) db).compactRange(level, Buffers.encodeString(""), Buffers.encodeString("~"));
             }
         }
     }
@@ -497,16 +497,16 @@ public class DbBenchmark {
     }
 
     private void snappyCompress() {
-        byte[] raw = generator.generate(new Options().blockSize());
-        byte[] compressedOutput = new byte[Snappy.maxCompressedLength(raw.length)];
+        ByteBuf raw = generator.generate(new Options().blockSize());
+        ByteBuf compressedOutput = ByteBufAllocator.DEFAULT.ioBuffer(raw.readableBytes());
 
         long produced = 0;
 
         // attempt to compress the block
         while (bytes < 1024 * 1048576) {  // Compress 1G
             try {
-                int compressedSize = Snappy.compress(raw, 0, raw.length, compressedOutput, 0);
-                bytes += raw.length;
+                bytes += raw.readableBytes();
+                int compressedSize = Snappy.COMPRESSOR.compress(raw, compressedOutput);
                 produced += compressedSize;
             } catch (IOException ignored) {
                 throw Throwables.propagate(ignored);
@@ -520,18 +520,18 @@ public class DbBenchmark {
 
     private void snappyUncompressArray() {
         int inputSize = new Options().blockSize();
-        byte[] compressedOutput = new byte[Snappy.maxCompressedLength(inputSize)];
-        byte[] raw = generator.generate(inputSize);
+        ByteBuf compressedOutput = ByteBufAllocator.DEFAULT.ioBuffer(inputSize);
+        ByteBuf raw = generator.generate(inputSize);
         int compressedLength;
         try {
-            compressedLength = Snappy.compress(raw, 0, raw.length, compressedOutput, 0);
+            compressedLength = Snappy.COMPRESSOR.compress(raw, compressedOutput);
         } catch (IOException e) {
             throw Throwables.propagate(e);
         }
         // attempt to uncompress the block
         while (bytes < 5L * 1024 * 1048576) {  // Compress 1G
             try {
-                Snappy.uncompress(compressedOutput, 0, compressedLength, raw, 0);
+                Snappy.COMPRESSOR.decompress(compressedOutput, raw);
                 bytes += inputSize;
             } catch (IOException ignored) {
                 throw Throwables.propagate(ignored);
@@ -543,26 +543,22 @@ public class DbBenchmark {
 
     private void snappyUncompressDirectBuffer() {
         int inputSize = new Options().blockSize();
-        byte[] compressedOutput = new byte[Snappy.maxCompressedLength(inputSize)];
-        byte[] raw = generator.generate(inputSize);
+        ByteBuf compressedOutput = ByteBufAllocator.DEFAULT.ioBuffer(inputSize);
+        ByteBuf raw = generator.generate(inputSize);
         int compressedLength;
         try {
-            compressedLength = Snappy.compress(raw, 0, raw.length, compressedOutput, 0);
+            compressedLength = Snappy.COMPRESSOR.compress(raw, compressedOutput);
         } catch (IOException e) {
             throw Throwables.propagate(e);
         }
 
-        ByteBuffer uncompressedBuffer = ByteBuffer.allocateDirect(inputSize);
-        ByteBuffer compressedBuffer = ByteBuffer.allocateDirect(compressedLength);
-        compressedBuffer.put(compressedOutput, 0, compressedLength);
+        ByteBuf uncompressedBuffer = ByteBufAllocator.DEFAULT.ioBuffer(inputSize);
 
         // attempt to uncompress the block
         while (bytes < 5L * 1024 * 1048576) {  // Compress 1G
             try {
                 uncompressedBuffer.clear();
-                compressedBuffer.position(0);
-                compressedBuffer.limit(compressedLength);
-                Snappy.uncompress(compressedBuffer, uncompressedBuffer);
+                Snappy.COMPRESSOR.decompress(compressedOutput, uncompressedBuffer);
                 bytes += inputSize;
             } catch (IOException ignored) {
                 throw Throwables.propagate(ignored);
@@ -576,7 +572,7 @@ public class DbBenchmark {
         //To change body of created methods use File | Settings | File Templates.
     }
 
-    private void destroyDb() {
+    private void destroyDb() throws IOException {
         Closeables.closeQuietly(db);
         db = null;
         FileUtils.deleteRecursively(databaseDir);
@@ -742,7 +738,7 @@ public class DbBenchmark {
     }
 
     private static class RandomGenerator {
-        private final Slice data;
+        private final ByteBuf data;
         private int position;
 
         private RandomGenerator(double compressionRatio) {
@@ -750,23 +746,22 @@ public class DbBenchmark {
             // that it is larger than the compression window (32KB), and also
             // large enough to serve all typical value sizes we want to write.
             Random rnd = new Random(301);
-            data = Slices.allocate(1048576 + 100);
-            SliceOutput sliceOutput = data.output();
-            while (sliceOutput.size() < 1048576) {
+            data = ByteBufAllocator.DEFAULT.ioBuffer(1048576 + 100);
+            while (data.writableBytes() < 1048576) {
                 // Add a short fragment that is as compressible as specified
                 // by FLAGS_compression_ratio.
-                sliceOutput.writeBytes(compressibleString(rnd, compressionRatio, 100));
+                data.writeBytes(compressibleString(rnd, compressionRatio, 100));
             }
         }
 
-        private byte[] generate(int length) {
-            if (position + length > data.length()) {
+        private ByteBuf generate(int length) {
+            if (position + length > data.writerIndex()) {
                 position = 0;
-                assert (length < data.length());
+                assert (length < data.writerIndex());
             }
-            Slice slice = data.slice(position, length);
+            ByteBuf slice = data.slice(position, length);
             position += length;
-            return slice.getBytes();
+            return slice;
         }
     }
 }

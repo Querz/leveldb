@@ -18,25 +18,28 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import org.iq80.leveldb.util.*;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.iq80.leveldb.impl.LogConstants.BLOCK_SIZE;
 import static org.iq80.leveldb.impl.LogConstants.HEADER_SIZE;
-import static org.iq80.leveldb.impl.Logs.getChunkChecksum;
+import static org.iq80.leveldb.util.CRC32CUtils.getChunkChecksum;
 
-public class MMapLogWriter
-        implements LogWriter {
+public class MMapLogWriter implements LogWriter {
     private static final int PAGE_SIZE = 1024 * 1024;
 
-    private final File file;
+    private final Path path;
     private final long fileNumber;
     private final FileChannel fileChannel;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -47,26 +50,24 @@ public class MMapLogWriter
      */
     private int blockOffset;
 
-    public MMapLogWriter(File file, long fileNumber)
-            throws IOException {
-        Preconditions.checkNotNull(file, "file is null");
+    public MMapLogWriter(Path path, long fileNumber) throws IOException {
+        Preconditions.checkNotNull(path, "file is null");
         Preconditions.checkArgument(fileNumber >= 0, "fileNumber is negative");
-        this.file = file;
+        this.path = path;
         this.fileNumber = fileNumber;
-        this.fileChannel = new RandomAccessFile(file, "rw").getChannel();
+        this.fileChannel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
         mappedByteBuffer = fileChannel.map(MapMode.READ_WRITE, 0, PAGE_SIZE);
     }
 
-    private static Slice newLogRecordHeader(LogChunkType type, Slice slice) {
-        int crc = getChunkChecksum(type.getPersistentId(), slice.getRawArray(), slice.getRawOffset(), slice.length());
+    private static ByteBuf newLogRecordHeader(LogChunkType type, ByteBuf buffer) {
+        int crc = getChunkChecksum(type.getPersistentId(), buffer);
 
         // Format the header
-        Slice header = Slices.allocate(HEADER_SIZE);
-        SliceOutput sliceOutput = header.output();
-        sliceOutput.writeInt(crc);
-        sliceOutput.writeByte((byte) (slice.length() & 0xff));
-        sliceOutput.writeByte((byte) (slice.length() >>> 8));
-        sliceOutput.writeByte((byte) (type.getPersistentId()));
+        ByteBuf header = ByteBufAllocator.DEFAULT.ioBuffer(HEADER_SIZE);
+        header.writeInt(crc);
+        header.writeByte((byte) (buffer.readableBytes() & 0xff));
+        header.writeByte((byte) (buffer.readableBytes() >>> 8));
+        header.writeByte((byte) (type.getPersistentId()));
 
         return header;
     }
@@ -97,7 +98,7 @@ public class MMapLogWriter
         close();
 
         // try to delete the file
-        file.delete();
+        Files.deleteIfExists(path);
     }
 
     private void destroyMappedByteBuffer() {
@@ -109,8 +110,8 @@ public class MMapLogWriter
     }
 
     @Override
-    public File getFile() {
-        return file;
+    public Path getPath() {
+        return path;
     }
 
     @Override
@@ -120,11 +121,8 @@ public class MMapLogWriter
 
     // Writes a stream of chunks such that no chunk is split across a block boundary
     @Override
-    public synchronized void addRecord(Slice record, boolean force)
-            throws IOException {
+    public synchronized void addRecord(ByteBuf record, boolean force) throws IOException {
         Preconditions.checkState(!closed.get(), "Log has been closed");
-
-        SliceInput sliceInput = record.input();
 
         // used to track first, middle and last blocks
         boolean begin = true;
@@ -156,12 +154,12 @@ public class MMapLogWriter
             // fragment the record; otherwise write to the end of the record
             boolean end;
             int fragmentLength;
-            if (sliceInput.available() > bytesAvailableInBlock) {
+            if (record.readableBytes() > bytesAvailableInBlock) {
                 end = false;
                 fragmentLength = bytesAvailableInBlock;
             } else {
                 end = true;
-                fragmentLength = sliceInput.available();
+                fragmentLength = record.readableBytes();
             }
 
             // determine block type
@@ -177,35 +175,36 @@ public class MMapLogWriter
             }
 
             // write the chunk
-            writeChunk(type, sliceInput.readBytes(fragmentLength));
+            writeChunk(type, record.readSlice(fragmentLength));
 
             // we are no longer on the first chunk
             begin = false;
-        } while (sliceInput.isReadable());
+        } while (record.isReadable());
 
         if (force) {
             mappedByteBuffer.force();
         }
     }
 
-    private void writeChunk(LogChunkType type, Slice slice)
-            throws IOException {
-        Preconditions.checkArgument(slice.length() <= 0xffff, "length %s is larger than two bytes", slice.length());
+    private void writeChunk(LogChunkType type, ByteBuf slice) throws IOException {
+        Preconditions.checkArgument(slice.readableBytes() <= 0xffff, "length %s is larger than two bytes", slice.readableBytes());
         Preconditions.checkArgument(blockOffset + HEADER_SIZE <= BLOCK_SIZE);
 
         // create header
-        Slice header = newLogRecordHeader(type, slice);
+        ByteBuf header = newLogRecordHeader(type, slice);
+        try {
+            // write the header and the payload
+            ensureCapacity(header.readableBytes() + slice.readableBytes());
+            mappedByteBuffer.put(header.internalNioBuffer(0, header.writerIndex()));
+            mappedByteBuffer.put(slice.internalNioBuffer(0, slice.writerIndex()));
 
-        // write the header and the payload
-        ensureCapacity(header.length() + slice.length());
-        header.getBytes(0, mappedByteBuffer);
-        slice.getBytes(0, mappedByteBuffer);
-
-        blockOffset += HEADER_SIZE + slice.length();
+            blockOffset += HEADER_SIZE + slice.readableBytes();
+        } finally {
+            header.release();
+        }
     }
 
-    private void ensureCapacity(int bytes)
-            throws IOException {
+    private void ensureCapacity(int bytes) throws IOException {
         if (mappedByteBuffer.remaining() < bytes) {
             // remap
             fileOffset += mappedByteBuffer.position();

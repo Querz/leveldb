@@ -18,19 +18,20 @@
 package org.iq80.leveldb.table;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.Options;
 import org.iq80.leveldb.impl.SeekingIterator;
 import org.iq80.leveldb.util.Closeables;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.Slices;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -39,17 +40,16 @@ import static java.util.Arrays.asList;
 import static org.testng.Assert.assertTrue;
 
 public abstract class TableTest {
-    private File file;
-    private RandomAccessFile randomAccessFile;
+    private Path file;
     private FileChannel fileChannel;
 
-    protected abstract Table createTable(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
+    protected abstract Table createTable(Path name, FileChannel fileChannel, Comparator<ByteBuf> comparator, boolean verifyChecksums)
             throws IOException;
 
     @Test(expectedExceptions = IllegalArgumentException.class)
     public void testEmptyFile()
             throws Exception {
-        createTable(file.getAbsolutePath(), fileChannel, new BytewiseComparator(), true);
+        createTable(file.toAbsolutePath(), fileChannel, new BytewiseComparator(), true);
     }
 
     @Test
@@ -113,11 +113,11 @@ public abstract class TableTest {
         for (BlockEntry entry : entries) {
             builder.add(entry);
         }
-        builder.finish();
+        builder.close();
 
-        Table table = createTable(file.getAbsolutePath(), fileChannel, new BytewiseComparator(), true);
+        Table table = createTable(file.toAbsolutePath(), fileChannel, new BytewiseComparator(), true);
 
-        SeekingIterator<Slice, Slice> seekingIterator = table.iterator();
+        SeekingIterator<ByteBuf, ByteBuf> seekingIterator = table.iterator();
         BlockHelper.assertSequence(seekingIterator, entries);
 
         seekingIterator.seekToFirst();
@@ -140,7 +140,7 @@ public abstract class TableTest {
             lastApproximateOffset = approximateOffset;
         }
 
-        Slice endKey = Slices.wrappedBuffer(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
+        ByteBuf endKey = Unpooled.wrappedBuffer(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
         seekingIterator.seek(endKey);
         BlockHelper.assertSequence(seekingIterator, Collections.<BlockEntry>emptyList());
 
@@ -150,25 +150,20 @@ public abstract class TableTest {
     }
 
     @BeforeMethod
-    public void setUp()
-            throws Exception {
+    public void setUp() throws Exception {
         reopenFile();
         Preconditions.checkState(0 == fileChannel.position(), "Expected fileChannel.position %s to be 0", fileChannel.position());
     }
 
-    private void reopenFile()
-            throws IOException {
-        file = File.createTempFile("table", ".db");
-        file.delete();
-        randomAccessFile = new RandomAccessFile(file, "rw");
-        fileChannel = randomAccessFile.getChannel();
+    private void reopenFile() throws IOException {
+        file = Files.createTempFile("table", ".db");
+        Files.deleteIfExists(file);
+        fileChannel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
     }
 
     @AfterMethod
-    public void tearDown()
-            throws Exception {
+    public void tearDown() throws Exception {
         Closeables.closeQuietly(fileChannel);
-        Closeables.closeQuietly(randomAccessFile);
-        file.delete();
+        Files.deleteIfExists(file);
     }
 }

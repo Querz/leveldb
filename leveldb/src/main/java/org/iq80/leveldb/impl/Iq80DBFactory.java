@@ -24,12 +24,12 @@ import org.iq80.leveldb.util.FileUtils;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 
 /**
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
-public class Iq80DBFactory
-        implements DBFactory {
+public class Iq80DBFactory implements DBFactory {
     public static final boolean IS_64_BIT = is64bit();
     // We only use MMAP on 64 bit systems since it's really easy to run out of
     // virtual address space on a 32 bit system when all the data is getting mapped
@@ -74,18 +74,18 @@ public class Iq80DBFactory
     }
 
     @Override
-    public DB open(File path, Options options) throws IOException {
+    public DB open(Path path, Options options) throws IOException {
         return new DbImpl(options, path);
     }
 
     @Override
-    public void destroy(File path, Options options) throws IOException {
+    public void destroy(Path path, Options options) throws IOException {
         // TODO: This should really only delete leveldb-created files.
         FileUtils.deleteRecursively(path);
     }
 
     @Override
-    public void repair(File path, Options options) throws IOException {
+    public void repair(Path path, Options options) throws IOException {
         throw new UnsupportedOperationException();
     }
 

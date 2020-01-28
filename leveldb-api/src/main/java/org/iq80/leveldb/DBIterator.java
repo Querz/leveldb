@@ -17,6 +17,8 @@
  */
 package org.iq80.leveldb;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.Closeable;
 import java.util.Iterator;
 import java.util.Map;
@@ -24,8 +26,7 @@ import java.util.Map;
 /**
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
-public interface DBIterator
-        extends Iterator<Map.Entry<byte[], byte[]>>, Closeable {
+public interface DBIterator extends Iterator<Map.Entry<byte[], ByteBuf>>, Closeable {
     /**
      * Repositions the iterator so the key of the next BlockElement
      * returned greater than or equal to the specified targetKey.
@@ -40,7 +41,7 @@ public interface DBIterator
     /**
      * Returns the next element in the iteration, without advancing the iteration.
      */
-    Map.Entry<byte[], byte[]> peekNext();
+    Map.Entry<byte[], ByteBuf> peekNext();
 
     /**
      * @return true if there is a previous entry in the iteration.
@@ -50,12 +51,12 @@ public interface DBIterator
     /**
      * @return the previous element in the iteration and rewinds the iteration.
      */
-    Map.Entry<byte[], byte[]> prev();
+    Map.Entry<byte[], ByteBuf> prev();
 
     /**
      * @return the previous element in the iteration, without rewinding the iteration.
      */
-    Map.Entry<byte[], byte[]> peekPrev();
+    Map.Entry<byte[], ByteBuf> peekPrev();
 
     /**
      * Repositions the iterator so it is at the end of of the Database.

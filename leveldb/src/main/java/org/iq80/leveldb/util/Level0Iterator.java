@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.Iterables;
 import com.google.common.primitives.Ints;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.impl.FileMetaData;
 import org.iq80.leveldb.impl.InternalKey;
 import org.iq80.leveldb.impl.SeekingIterator;
@@ -29,9 +30,7 @@ import org.iq80.leveldb.impl.TableCache;
 import java.util.*;
 import java.util.Map.Entry;
 
-public final class Level0Iterator
-        extends AbstractSeekingIterator<InternalKey, Slice>
-        implements InternalIterator {
+public final class Level0Iterator extends AbstractSeekingIterator<InternalKey, ByteBuf> implements InternalIterator {
     private final List<InternalTableIterator> inputs;
     private final PriorityQueue<ComparableIterator> priorityQueue;
     private final Comparator<InternalKey> comparator;
@@ -82,8 +81,8 @@ public final class Level0Iterator
     }
 
     @Override
-    protected Entry<InternalKey, Slice> getNextElement() {
-        Entry<InternalKey, Slice> result = null;
+    protected Entry<InternalKey, ByteBuf> getNextElement() {
+        Entry<InternalKey, ByteBuf> result = null;
         ComparableIterator nextIterator = priorityQueue.poll();
         if (nextIterator != null) {
             result = nextIterator.next();
@@ -96,22 +95,20 @@ public final class Level0Iterator
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("MergingIterator");
-        sb.append("{inputs=").append(Iterables.toString(inputs));
-        sb.append(", comparator=").append(comparator);
-        sb.append('}');
-        return sb.toString();
+        return "MergingIterator" +
+                "(inputs=" + Iterables.toString(inputs) +
+                ", comparator=" + comparator +
+                ')';
     }
 
-    private static class ComparableIterator
-            implements Iterator<Entry<InternalKey, Slice>>, Comparable<ComparableIterator> {
-        private final SeekingIterator<InternalKey, Slice> iterator;
+    private static class ComparableIterator implements Iterator<Entry<InternalKey, ByteBuf>>, Comparable<ComparableIterator> {
+        private final SeekingIterator<InternalKey, ByteBuf> iterator;
         private final Comparator<InternalKey> comparator;
         private final int ordinal;
-        private Entry<InternalKey, Slice> nextElement;
+        private Entry<InternalKey, ByteBuf> nextElement;
 
-        private ComparableIterator(SeekingIterator<InternalKey, Slice> iterator, Comparator<InternalKey> comparator, int ordinal, Entry<InternalKey, Slice> nextElement) {
+        private ComparableIterator(SeekingIterator<InternalKey, ByteBuf> iterator, Comparator<InternalKey> comparator,
+                                   int ordinal, Entry<InternalKey, ByteBuf> nextElement) {
             this.iterator = iterator;
             this.comparator = comparator;
             this.ordinal = ordinal;
@@ -124,12 +121,12 @@ public final class Level0Iterator
         }
 
         @Override
-        public Entry<InternalKey, Slice> next() {
+        public Entry<InternalKey, ByteBuf> next() {
             if (nextElement == null) {
                 throw new NoSuchElementException();
             }
 
-            Entry<InternalKey, Slice> result = nextElement;
+            Entry<InternalKey, ByteBuf> result = nextElement;
             if (iterator.hasNext()) {
                 nextElement = iterator.next();
             } else {

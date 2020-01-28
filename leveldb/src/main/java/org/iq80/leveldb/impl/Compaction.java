@@ -18,8 +18,8 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.table.UserComparator;
-import org.iq80.leveldb.util.Slice;
 
 import java.util.List;
 
@@ -130,7 +130,7 @@ public class Compaction {
     // Returns true if the information we have available guarantees that
     // the compaction is producing data in "level+1" for which no data exists
     // in levels greater than "level+1".
-    public boolean isBaseLevelForKey(Slice userKey) {
+    public boolean isBaseLevelForKey(ByteBuf userKey) {
         // Maybe use binary search to find right entry instead of linear search?
         UserComparator userComparator = inputVersion.getInternalKeyComparator().getUserComparator();
         for (int level = this.level + 2; level < NUM_LEVELS; level++) {

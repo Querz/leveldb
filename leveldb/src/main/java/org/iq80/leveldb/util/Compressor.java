@@ -17,14 +17,13 @@
  */
 package org.iq80.leveldb.util;
 
-import java.util.Comparator;
+import io.netty.buffer.ByteBuf;
 
-public final class SliceComparator
-        implements Comparator<Slice> {
-    public static final SliceComparator SLICE_COMPARATOR = new SliceComparator();
+import java.io.IOException;
 
-    @Override
-    public int compare(Slice sliceA, Slice sliceB) {
-        return sliceA.compareTo(sliceB);
-    }
+public interface Compressor {
+
+    void compress(ByteBuf uncompressed, ByteBuf compressed) throws IOException;
+
+    void decompress(ByteBuf compressed, ByteBuf uncompressed) throws IOException;
 }

@@ -26,21 +26,22 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 import static java.lang.String.format;
 
 public class DbLock {
-    private final File lockFile;
+    private final Path lockFile;
     private final FileChannel channel;
     private final FileLock lock;
 
-    public DbLock(File lockFile)
-            throws IOException {
-        Preconditions.checkNotNull(lockFile, "lockFile is null");
-        this.lockFile = lockFile;
+    public DbLock(Path lockPath) throws IOException {
+        Preconditions.checkNotNull(lockPath, "lockPath is null");
+        this.lockFile = lockPath;
 
         // open and lock the file
-        channel = new RandomAccessFile(lockFile, "rw").getChannel();
+        channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
         try {
             lock = channel.tryLock();
         } catch (IOException e) {
@@ -49,7 +50,7 @@ public class DbLock {
         }
 
         if (lock == null) {
-            throw new IOException(format("Unable to acquire lock on '%s'", lockFile.getAbsolutePath()));
+            throw new IOException(format("Unable to acquire lock on '%s'", lockPath.toAbsolutePath()));
         }
     }
 
@@ -69,11 +70,9 @@ public class DbLock {
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("DbLock");
-        sb.append("{lockFile=").append(lockFile);
-        sb.append(", lock=").append(lock);
-        sb.append('}');
-        return sb.toString();
+        return "DbLock" +
+                "(lockFile=" + lockFile +
+                ", lock=" + lock +
+                ')';
     }
 }

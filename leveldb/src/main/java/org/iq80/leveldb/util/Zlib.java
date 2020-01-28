@@ -17,9 +17,15 @@
  */
 package org.iq80.leveldb.util;
 
-import java.io.*;
+import com.nukkitx.natives.util.Natives;
+import com.nukkitx.natives.zlib.Deflater;
+import com.nukkitx.natives.zlib.Inflater;
+import io.netty.buffer.ByteBuf;
+
+import javax.xml.crypto.Data;
+import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.zip.*;
+import java.util.zip.DataFormatException;
 
 /**
  * Some glue code that uses the java.util.zip classes to implement ZLIB
@@ -27,195 +33,58 @@ import java.util.zip.*;
  */
 public class Zlib {
 
-    static final private ZLibSPI ZLIB;
-    static final private ZLibSPI ZLIB_RAW;
+    private static final com.nukkitx.natives.zlib.Zlib ZLIB_NATIVE_CODE = Natives.ZLIB.get();
 
-    static {
-        ZLIB = new ZLibSPI(false);
-        ZLIB_RAW = new ZLibSPI(true);
-    }
+    public static final ZLibCompressor ZLIB = new ZLibCompressor(false);
+    public static final ZLibCompressor ZLIB_RAW = new ZLibCompressor(true);
 
     public static boolean available() {
-        return ZLIB != null && ZLIB_RAW != null;
+        return true; // Zlib is built into java
     }
 
-    public static void uncompress(ByteBuffer compressed, ByteArrayOutputStream uncompressed)
-            throws IOException {
-        ZLIB.uncompress(compressed, uncompressed);
-    }
 
-    public static void uncompress(byte[] input, int inputOffset, int length,
-                                  byte[] output, int outputOffset) throws IOException {
-        ZLIB.uncompress(input, inputOffset, length, output, outputOffset);
-    }
+    private static class ZLibCompressor implements Compressor {
 
-    public static int compress(byte[] input, int inputOffset, int length,
-                               byte[] output, int outputOffset) throws IOException {
-        return ZLIB.compress(input, inputOffset, length, output, outputOffset);
-    }
+        private final ThreadLocal<Inflater> inflator;
+        private final ThreadLocal<Deflater> deflater;
 
-    public static byte[] compress(String text) throws IOException {
-        return ZLIB.compress(text);
-    }
-
-    public static void uncompressRaw(ByteBuffer compressed, ByteArrayOutputStream uncompressed)
-            throws IOException {
-        ZLIB_RAW.uncompress(compressed, uncompressed);
-    }
-
-    public static void uncompressRaw(byte[] input, int inputOffset, int length,
-                                     byte[] output, int outputOffset) throws IOException {
-        ZLIB_RAW.uncompress(input, inputOffset, length, output, outputOffset);
-    }
-
-    public static int compressRaw(byte[] input, int inputOffset, int length,
-                                  byte[] output, int outputOffset) throws IOException {
-        return ZLIB_RAW.compress(input, inputOffset, length, output, outputOffset);
-    }
-
-    public static byte[] compressRaw(String text) throws IOException {
-        return ZLIB_RAW.compress(text);
-    }
-
-    /**
-     * From:
-     * http://stackoverflow.com/questions/4332264/wrapping-a-bytebuffer-with-
-     * an-inputstream
-     */
-    public static class ByteBufferBackedInputStream extends InputStream {
-
-        ByteBuffer buf;
-
-        public ByteBufferBackedInputStream(ByteBuffer buf) {
-            this.buf = buf;
+        public ZLibCompressor(boolean nowrap) {
+            this.inflator = ThreadLocal.withInitial(() -> ZLIB_NATIVE_CODE.create(nowrap));
+            this.deflater = ThreadLocal.withInitial(() -> ZLIB_NATIVE_CODE.create(-1, nowrap));
         }
 
-        public int read() throws IOException {
-            if (!buf.hasRemaining()) {
-                return -1;
+        @Override
+        public void compress(ByteBuf uncompressed, ByteBuf compressed) throws IOException {
+            Deflater deflater = this.deflater.get();
+            deflater.reset();
+
+            deflater.setInput(uncompressed.internalNioBuffer(uncompressed.readerIndex(), uncompressed.readableBytes()));
+
+            while (!deflater.finished()) {
+                compressed.ensureWritable(8192);
+                ByteBuffer internalBuffer = compressed.internalNioBuffer(compressed.writerIndex(), compressed.writableBytes());
+                int result = deflater.deflate(internalBuffer);
+                compressed.writerIndex(compressed.writerIndex() + result);
             }
-            return buf.get() & 0xFF;
         }
 
-        public int read(byte[] bytes, int off, int len) throws IOException {
-            if (!buf.hasRemaining()) {
-                return -1;
-            }
-
-            len = Math.min(len, buf.remaining());
-            buf.get(bytes, off, len);
-            return len;
-        }
-    }
-
-    public static class ByteBufferBackedOutputStream extends OutputStream {
-        ByteBuffer buf;
-
-        public ByteBufferBackedOutputStream(ByteBuffer buf) {
-            this.buf = buf;
-        }
-
-        public void write(int b) throws IOException {
-            buf.put((byte) b);
-        }
-
-        public void write(byte[] bytes, int off, int len) throws IOException {
-            buf.put(bytes, off, len);
-        }
-
-    }
-
-    /**
-     * Use the same SPI interface as Snappy, for the case if leveldb ever gets
-     * a compression plug-in type.
-     */
-    private static class ZLibSPI {
-
-        private static final ThreadLocal<byte[]> BUFFERS = ThreadLocal.withInitial(() -> new byte[1024]);
-
-        private final ThreadLocal<Deflater> deflaterThreadLocal;
-        private final ThreadLocal<Inflater> inflaterThreadLocal;
-
-        public ZLibSPI(final boolean raw) {
-            this.deflaterThreadLocal = ThreadLocal.withInitial(() -> new Deflater(-1, raw));
-            this.inflaterThreadLocal = ThreadLocal.withInitial(() -> new Inflater(raw));
-        }
-
-        private int copy(InputStream in, OutputStream out) throws IOException {
-            byte[] buffer = BUFFERS.get();
-            int read;
-            int count = 0;
-
-            while (-1 != (read = in.read(buffer))) {
-                out.write(buffer, 0, read);
-                count += read;
-            }
-
-            return count;
-        }
-
-        public int uncompress(ByteBuffer compressed, ByteArrayOutputStream uncompressed) throws IOException {
-            Inflater inflater = this.inflaterThreadLocal.get();
+        @Override
+        public void decompress(ByteBuf compressed, ByteBuf uncompressed) throws IOException {
+            Inflater inflater = inflator.get();
             inflater.reset();
 
-            byte[] data = new byte[compressed.remaining()];
-            compressed.get(data);
-            inflater.setInput(data);
-
-            byte[] buffer = BUFFERS.get();
-            int read;
-            int count = 0;
+            inflater.setInput(compressed.internalNioBuffer(compressed.readerIndex(), compressed.readableBytes()));
 
             try {
-                while ((read = inflater.inflate(buffer)) != 0) {
-                    uncompressed.write(buffer, 0, read);
-                    count += read;
+                while (!inflater.finished()) {
+                    uncompressed.ensureWritable(8192);
+                    ByteBuffer internalBuffer = uncompressed.internalNioBuffer(uncompressed.writerIndex(), uncompressed.writableBytes());
+                    int result = inflater.inflate(internalBuffer);
+                    uncompressed.writerIndex(uncompressed.writerIndex() + result);
                 }
             } catch (DataFormatException e) {
-                throw new IOException("Could not decompress data: ", e);
+                throw new IOException("Unable to inflate zlib data", e);
             }
-
-            return count;
-        }
-
-        public int uncompress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException {
-            Inflater inflater = this.inflaterThreadLocal.get();
-            inflater.reset();
-
-            return copy(
-                    new InflaterInputStream(new ByteArrayInputStream(input, inputOffset,
-                            length), inflater),
-                    new ByteBufferBackedOutputStream(ByteBuffer.wrap(output,
-                            outputOffset, output.length - outputOffset)));
-        }
-
-        public int compress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException {
-            Deflater deflater = this.deflaterThreadLocal.get();
-            deflater.reset();
-
-            // TODO: parameters of Deflater to match MCPE expectations.
-            ByteBufferBackedOutputStream stream = new ByteBufferBackedOutputStream(ByteBuffer.wrap(output,
-                    outputOffset, output.length - outputOffset));
-
-            return copy(
-                    new DeflaterInputStream(new ByteArrayInputStream(input, inputOffset,
-                            length), deflater),
-                    stream
-            );
-        }
-
-        public byte[] compress(String text) throws IOException {
-            Deflater deflater = this.deflaterThreadLocal.get();
-            deflater.reset();
-
-            byte[] input = text.getBytes();
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            // TODO: parameters of Deflater to match MCPE expectations.
-            copy(new DeflaterInputStream(new ByteArrayInputStream(input, 0,
-                    input.length), deflater), baos);
-            return baos.toByteArray();
         }
     }
 }

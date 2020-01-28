@@ -23,6 +23,7 @@ import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.util.*;
 
 import java.util.Collection;
@@ -37,8 +38,7 @@ import static org.iq80.leveldb.impl.SequenceNumber.MAX_SEQUENCE_NUMBER;
 import static org.iq80.leveldb.impl.VersionSet.MAX_GRAND_PARENT_OVERLAP_BYTES;
 
 // todo this class should be immutable
-public class Version
-        implements SeekingIterable<InternalKey, Slice> {
+public class Version implements SeekingIterable<InternalKey, ByteBuf> {
     private final AtomicInteger retained = new AtomicInteger(1);
     private final VersionSet versionSet;
     private final Level0 level0;
@@ -160,7 +160,7 @@ public class Version
         return lookupResult;
     }
 
-    int pickLevelForMemTableOutput(Slice smallestUserKey, Slice largestUserKey) {
+    int pickLevelForMemTableOutput(ByteBuf smallestUserKey, ByteBuf largestUserKey) {
         int level = 0;
         if (!overlapInLevel(0, smallestUserKey, largestUserKey)) {
             // Push to next level if there is no overlap in next level,
@@ -181,7 +181,7 @@ public class Version
         return level;
     }
 
-    public boolean overlapInLevel(int level, Slice smallestUserKey, Slice largestUserKey) {
+    public boolean overlapInLevel(int level, ByteBuf smallestUserKey, ByteBuf largestUserKey) {
         Preconditions.checkPositionIndex(level, levels.size(), "Invalid level");
         Preconditions.checkNotNull(smallestUserKey, "smallestUserKey is null");
         Preconditions.checkNotNull(largestUserKey, "largestUserKey is null");

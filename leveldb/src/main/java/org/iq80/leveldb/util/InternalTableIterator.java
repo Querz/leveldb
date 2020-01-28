@@ -18,13 +18,12 @@
 package org.iq80.leveldb.util;
 
 import com.google.common.collect.Maps;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.impl.InternalKey;
 
 import java.util.Map.Entry;
 
-public class InternalTableIterator
-        extends AbstractSeekingIterator<InternalKey, Slice>
-        implements InternalIterator {
+public class InternalTableIterator extends AbstractSeekingIterator<InternalKey, ByteBuf> implements InternalIterator {
     private final TableIterator tableIterator;
 
     public InternalTableIterator(TableIterator tableIterator) {
@@ -42,9 +41,9 @@ public class InternalTableIterator
     }
 
     @Override
-    protected Entry<InternalKey, Slice> getNextElement() {
+    protected Entry<InternalKey, ByteBuf> getNextElement() {
         if (tableIterator.hasNext()) {
-            Entry<Slice, Slice> next = tableIterator.next();
+            Entry<ByteBuf, ByteBuf> next = tableIterator.next();
             return Maps.immutableEntry(new InternalKey(next.getKey()), next.getValue());
         }
         return null;
@@ -52,10 +51,8 @@ public class InternalTableIterator
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("InternalTableIterator");
-        sb.append("{fromIterator=").append(tableIterator);
-        sb.append('}');
-        return sb.toString();
+        return "InternalTableIterator" +
+                "(fromIterator=" + tableIterator +
+                ')';
     }
 }

@@ -18,14 +18,14 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
-import org.iq80.leveldb.util.Slice;
+import io.netty.buffer.ByteBuf;
 
 public class LookupResult {
     private final LookupKey key;
-    private final Slice value;
+    private final ByteBuf value;
     private final boolean deleted;
 
-    private LookupResult(LookupKey key, Slice value, boolean deleted) {
+    private LookupResult(LookupKey key, ByteBuf value, boolean deleted) {
         Preconditions.checkNotNull(key, "key is null");
         this.key = key;
         if (value != null) {
@@ -36,7 +36,7 @@ public class LookupResult {
         this.deleted = deleted;
     }
 
-    public static LookupResult ok(LookupKey key, Slice value) {
+    public static LookupResult ok(LookupKey key, ByteBuf value) {
         return new LookupResult(key, value, false);
     }
 
@@ -48,7 +48,7 @@ public class LookupResult {
         return key;
     }
 
-    public Slice getValue() {
+    public ByteBuf getValue() {
         if (value == null) {
             return null;
         }

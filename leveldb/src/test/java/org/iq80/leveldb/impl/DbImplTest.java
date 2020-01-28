@@ -20,16 +20,20 @@ package org.iq80.leveldb.impl;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.UnsignedBytes;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.*;
 import org.iq80.leveldb.util.FileUtils;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.Slices;
+import org.iq80.leveldb.util.Buffers;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.Map.Entry;
 
@@ -49,7 +53,7 @@ public class DbImplTest {
     private static final String DOES_NOT_EXIST_FILENAME = "foo/bar/doowop/idontexist";
     private static final String DOES_NOT_EXIST_FILENAME_PATTERN = ".foo.bar.doowop.idontexist";
     private final ArrayList<DbStringWrapper> opened = new ArrayList<>();
-    private File databaseDir;
+    private Path databaseDir;
 
     static byte[] toByteArray(String value) {
         return value.getBytes(UTF_8);
@@ -83,7 +87,7 @@ public class DbImplTest {
         DbImpl db = new DbImpl(options, this.databaseDir);
         Random random = new Random(301);
         for (int i = 0; i < 200000 * STRESS_FACTOR; i++) {
-            db.put(randomString(random, 64).getBytes(), new byte[]{0x01}, new WriteOptions().sync(false));
+            db.put(randomString(random, 64).getBytes(), Unpooled.wrappedBuffer(new byte[]{0x01}), new WriteOptions().sync(false));
             db.get(randomString(random, 64).getBytes());
             if ((i % 50000) == 0 && i != 0) {
                 System.out.println(i + " rows written");
@@ -100,15 +104,14 @@ public class DbImplTest {
         for (int index = 0; index < 5000000; index++) {
             String key = "Key LOOOOOOOOOOOOOOOOOONG KEY " + index;
             String value = "This is element " + index + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABZASDFASDKLFJASDFKJSDFLKSDJFLKJSDHFLKJHSDJFSDFHJASDFLKJSDF";
-            db.put(key.getBytes("UTF-8"), value.getBytes("UTF-8"));
+            db.put(key.getBytes("UTF-8"), Unpooled.wrappedBuffer(value.getBytes("UTF-8")));
         }
     }
 
     @Test
-    public void testEmpty()
-            throws Exception {
+    public void testEmpty() throws Exception {
         Options options = new Options();
-        File databaseDir = this.databaseDir;
+        Path databaseDir = this.databaseDir;
         DbStringWrapper db = new DbStringWrapper(options, databaseDir);
         assertNull(db.get("foo"));
     }
@@ -785,25 +788,24 @@ public class DbImplTest {
     @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Database directory.*is not a directory")
     public void testDBDirectoryIsFileRetrunMessage()
             throws Exception {
-        File databaseFile = new File(databaseDir + "/imafile");
-        assertTrue(databaseFile.createNewFile());
+        Path databaseFile = databaseDir.resolve("imafile");
+        Files.createFile(databaseFile);
         new DbStringWrapper(new Options(), databaseFile);
         new sun.misc.Cache();
     }
 
     @Test
     public void testSymbolicLinkForFileWithoutParent() {
-        assertFalse(FileUtils.isSymbolicLink(new File("db")));
+        assertFalse(FileUtils.isSymbolicLink(Paths.get("db")));
     }
 
     @Test
     public void testSymbolicLinkForFileWithParent() {
-        assertFalse(FileUtils.isSymbolicLink(new File(DOES_NOT_EXIST_FILENAME, "db")));
+        assertFalse(FileUtils.isSymbolicLink(Paths.get(DOES_NOT_EXIST_FILENAME, "db")));
     }
 
     @Test
-    public void testCustomComparator()
-            throws Exception {
+    public void testCustomComparator() throws Exception {
         DbStringWrapper db = new DbStringWrapper(new Options().comparator(new ReverseDBComparator()), databaseDir);
 
         List<Entry<String, String>> entries = asList(
@@ -864,15 +866,14 @@ public class DbImplTest {
             assertSequence(seekingIterator, nextEntries.subList(1, nextEntries.size()));
         }
 
-        Slice endKey = Slices.wrappedBuffer(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
+        ByteBuf endKey = Unpooled.wrappedBuffer(new byte[]{(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF});
         seekingIterator.seek(endKey.toString(UTF_8));
         assertSequence(seekingIterator, Collections.<Entry<String, String>>emptyList());
     }
 
     @BeforeMethod
-    public void setUp()
-            throws Exception {
-        databaseDir = FileUtils.createTempDir("leveldb");
+    public void setUp() throws Exception {
+        databaseDir = Files.createTempDirectory("leveldb");
     }
 
     @AfterMethod
@@ -1018,17 +1019,17 @@ public class DbImplTest {
             throw new UnsupportedOperationException();
         }
 
-        private Entry<String, String> adapt(Entry<byte[], byte[]> next) {
-            return immutableEntry(new String(next.getKey(), UTF_8), new String(next.getValue(), UTF_8));
+        private Entry<String, String> adapt(Entry<byte[], ByteBuf> next) {
+            return immutableEntry(new String(next.getKey(), UTF_8), next.getValue().toString(UTF_8));
         }
     }
 
     private class DbStringWrapper {
         private final Options options;
-        private final File databaseDir;
+        private final Path databaseDir;
         private DbImpl db;
 
-        private DbStringWrapper(Options options, File databaseDir)
+        private DbStringWrapper(Options options, Path databaseDir)
                 throws IOException {
             this.options = options.verifyChecksums(true).createIfMissing(true).errorIfExists(true);
             this.databaseDir = databaseDir;
@@ -1037,23 +1038,23 @@ public class DbImplTest {
         }
 
         public String get(String key) {
-            byte[] slice = db.get(toByteArray(key));
+            ByteBuf slice = db.get(toByteArray(key));
             if (slice == null) {
                 return null;
             }
-            return new String(slice, UTF_8);
+            return slice.toString(UTF_8);
         }
 
         public String get(String key, Snapshot snapshot) {
-            byte[] slice = db.get(toByteArray(key), new ReadOptions().snapshot(snapshot));
+            ByteBuf slice = db.get(toByteArray(key), new ReadOptions().snapshot(snapshot));
             if (slice == null) {
                 return null;
             }
-            return new String(slice, UTF_8);
+            return slice.toString(UTF_8);
         }
 
         public void put(String key, String value) {
-            db.put(toByteArray(key), toByteArray(value));
+            db.put(toByteArray(key), Unpooled.wrappedBuffer(toByteArray(value)));
         }
 
         public void delete(String key) {
@@ -1077,7 +1078,7 @@ public class DbImplTest {
         }
 
         public void compactRange(int level, String start, String limit) {
-            db.compactRange(level, Slices.copiedBuffer(start, UTF_8), Slices.copiedBuffer(limit, UTF_8));
+            db.compactRange(level, Buffers.encodeString(start), Buffers.encodeString(limit));
         }
 
         public void compact(String start, String limit) {
@@ -1089,7 +1090,7 @@ public class DbImplTest {
                 }
             }
             for (int level = 0; level < maxLevelWithFiles; level++) {
-                db.compactRange(level, Slices.copiedBuffer("", UTF_8), Slices.copiedBuffer("~", UTF_8));
+                db.compactRange(level, Buffers.encodeString(""), Buffers.encodeString("~"));
             }
 
         }
@@ -1127,7 +1128,7 @@ public class DbImplTest {
 
         private List<String> allEntriesFor(String userKey) {
             ImmutableList.Builder<String> result = ImmutableList.builder();
-            for (Entry<InternalKey, Slice> entry : db.internalIterable()) {
+            for (Entry<InternalKey, ByteBuf> entry : db.internalIterable()) {
                 String entryKey = entry.getKey().getUserKey().toString(UTF_8);
                 if (entryKey.equals(userKey)) {
                     if (entry.getKey().getValueType() == ValueType.VALUE) {

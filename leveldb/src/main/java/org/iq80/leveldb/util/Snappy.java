@@ -17,13 +17,16 @@
  */
 package org.iq80.leveldb.util;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
 /**
  * <p>
- * A Snappy abstraction which attempts uses the iq80 implementation and falls back
- * to the xerial Snappy implementation it cannot be loaded.  You can change the
+ * A Snappy abstraction which attempts uses the xerial implementation and falls back
+ * to the iq80 Snappy implementation it cannot be loaded.  You can change the
  * load order by setting the 'leveldb.snappy' system property.  Example:
  * <p/>
  * <code>
@@ -37,76 +40,35 @@ import java.nio.ByteBuffer;
  * @author <a href="http://hiramchirino.com">Hiram Chirino</a>
  */
 public final class Snappy {
-    private static final SPI SNAPPY;
+    public static final Compressor COMPRESSOR;
 
     static {
-        SPI attempt = null;
-        String[] factories = System.getProperty("leveldb.snappy", "iq80,xerial").split(",");
+        Compressor attempt = null;
+        String[] factories = System.getProperty("leveldb.snappy", "xerial,iq80").split(",");
         for (int i = 0; i < factories.length && attempt == null; i++) {
             String name = factories[i];
             try {
                 name = name.trim();
                 if ("xerial".equals(name.toLowerCase())) {
-                    name = "org.iq80.leveldb.util.Snappy$XerialSnappy";
+                    name = "org.iq80.leveldb.util.Snappy$XerialCompressor";
                 } else if ("iq80".equals(name.toLowerCase())) {
-                    name = "org.iq80.leveldb.util.Snappy$IQ80Snappy";
+                    name = "org.iq80.leveldb.util.Snappy$IQ80Compressor";
                 }
-                attempt = (SPI) Thread.currentThread().getContextClassLoader().loadClass(name).newInstance();
-            } catch (Throwable e) {
+                attempt = (Compressor) Thread.currentThread().getContextClassLoader().loadClass(name).newInstance();
+            } catch (Throwable ignored) {
             }
         }
-        SNAPPY = attempt;
+        COMPRESSOR = attempt;
     }
 
     private Snappy() {
     }
 
     public static boolean available() {
-        return SNAPPY != null;
+        return COMPRESSOR != null;
     }
 
-    public static void uncompress(ByteBuffer compressed, ByteBuffer uncompressed)
-            throws IOException {
-        SNAPPY.uncompress(compressed, uncompressed);
-    }
-
-    public static void uncompress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-            throws IOException {
-        SNAPPY.uncompress(input, inputOffset, length, output, outputOffset);
-    }
-
-    public static int compress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-            throws IOException {
-        return SNAPPY.compress(input, inputOffset, length, output, outputOffset);
-    }
-
-    public static byte[] compress(String text)
-            throws IOException {
-        return SNAPPY.compress(text);
-    }
-
-    public static int maxCompressedLength(int length) {
-        return SNAPPY.maxCompressedLength(length);
-    }
-
-    public interface SPI {
-        int uncompress(ByteBuffer compressed, ByteBuffer uncompressed)
-                throws IOException;
-
-        int uncompress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException;
-
-        int compress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException;
-
-        byte[] compress(String text)
-                throws IOException;
-
-        int maxCompressedLength(int length);
-    }
-
-    public static class XerialSnappy
-            implements SPI {
+    public static class XerialCompressor implements Compressor {
         static {
             // Make sure that the JNI libs are fully loaded.
             try {
@@ -117,113 +79,66 @@ public final class Snappy {
         }
 
         @Override
-        public int uncompress(ByteBuffer compressed, ByteBuffer uncompressed)
-                throws IOException {
-            return org.xerial.snappy.Snappy.uncompress(compressed, uncompressed);
+        public void compress(ByteBuf uncompressed, ByteBuf compressed) throws IOException {
+            ByteBuffer uncompressedBuffer = uncompressed.internalNioBuffer(uncompressed.readerIndex(), uncompressed.readableBytes());
+            ByteBuffer compressedBuffer = compressed.internalNioBuffer(compressed.writerIndex(), compressed.writableBytes());
+            int written = org.xerial.snappy.Snappy.compress(uncompressedBuffer, compressedBuffer);
+            compressed.writerIndex(compressed.writerIndex() + written);
         }
 
         @Override
-        public int uncompress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException {
-            return org.xerial.snappy.Snappy.uncompress(input, inputOffset, length, output, outputOffset);
-        }
-
-        @Override
-        public int compress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException {
-            return org.xerial.snappy.Snappy.compress(input, inputOffset, length, output, outputOffset);
-        }
-
-        @Override
-        public byte[] compress(String text)
-                throws IOException {
-            return org.xerial.snappy.Snappy.compress(text);
-        }
-
-        @Override
-        public int maxCompressedLength(int length) {
-            return org.xerial.snappy.Snappy.maxCompressedLength(length);
+        public void decompress(ByteBuf compressed, ByteBuf uncompressed) throws IOException {
+            ByteBuffer compressedBuffer = compressed.internalNioBuffer(compressed.writerIndex(), compressed.writableBytes());
+            ByteBuffer uncompressedBuffer = uncompressed.internalNioBuffer(uncompressed.readerIndex(), uncompressed.readableBytes());
+            int written = org.xerial.snappy.Snappy.uncompress(compressedBuffer, uncompressedBuffer);
+            uncompressed.writerIndex(uncompressed.writerIndex() + written);
         }
     }
 
-    public static class IQ80Snappy
-            implements SPI {
+    public static class IQ80Compressor implements Compressor {
+
+        private static final ThreadLocal<byte[]> BUFFER = ThreadLocal.withInitial(() -> new byte[Short.MAX_VALUE]);
+
         static {
             // Make sure that the library can fully load.
             try {
-                new IQ80Snappy().compress("test");
+                new IQ80Compressor().compress(Buffers.encodeString("test"), ByteBufAllocator.DEFAULT.ioBuffer());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }
 
         @Override
-        public int uncompress(ByteBuffer compressed, ByteBuffer uncompressed)
-                throws IOException {
-            byte[] input;
-            int inputOffset;
-            int length;
-            byte[] output;
-            int outputOffset;
-            if (compressed.hasArray()) {
-                input = compressed.array();
-                inputOffset = compressed.arrayOffset() + compressed.position();
-                length = compressed.remaining();
-            } else {
-                input = new byte[compressed.remaining()];
-                inputOffset = 0;
-                length = input.length;
-                compressed.mark();
-                compressed.get(input);
-                compressed.reset();
-            }
-            if (uncompressed.hasArray()) {
-                output = uncompressed.array();
-                outputOffset = uncompressed.arrayOffset() + uncompressed.position();
-            } else {
-                int t = org.iq80.snappy.Snappy.getUncompressedLength(input, inputOffset);
-                output = new byte[t];
-                outputOffset = 0;
-            }
+        public void compress(ByteBuf uncompressed, ByteBuf compressed) throws IOException {
+            byte[] input = new byte[uncompressed.readableBytes()];;
+            int length = input.length;
 
-            int count = org.iq80.snappy.Snappy.uncompress(input, inputOffset, length, output, outputOffset);
-            if (uncompressed.hasArray()) {
-                uncompressed.limit(uncompressed.position() + count);
-            } else {
-                int p = uncompressed.position();
-                uncompressed.limit(uncompressed.capacity());
-                uncompressed.put(output, 0, count);
-                uncompressed.flip().position(p);
-            }
-            return count;
+            uncompressed.markReaderIndex();
+            uncompressed.readBytes(input);
+            uncompressed.resetReaderIndex();
+
+            byte[] output = BUFFER.get();
+
+            int written = org.iq80.snappy.Snappy.compress(input, 0, length, output, 0);
+
+            compressed.writeBytes(output, 0, written);
         }
 
         @Override
-        public int uncompress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException {
-            return org.iq80.snappy.Snappy.uncompress(input, inputOffset, length, output, outputOffset);
-        }
+        public void decompress(ByteBuf compressed, ByteBuf uncompressed) {
+            byte[] input = new byte[compressed.readableBytes()];;
+            int length = input.length;
 
-        @Override
-        public int compress(byte[] input, int inputOffset, int length, byte[] output, int outputOffset)
-                throws IOException {
-            return org.iq80.snappy.Snappy.compress(input, inputOffset, length, output, outputOffset);
-        }
+            compressed.markReaderIndex();
+            compressed.readBytes(input);
+            compressed.resetReaderIndex();
 
-        @Override
-        public byte[] compress(String text)
-                throws IOException {
-            byte[] uncomressed = text.getBytes("UTF-8");
-            byte[] compressedOut = new byte[maxCompressedLength(uncomressed.length)];
-            int compressedSize = compress(uncomressed, 0, uncomressed.length, compressedOut, 0);
-            byte[] trimmedBuffer = new byte[compressedSize];
-            System.arraycopy(compressedOut, 0, trimmedBuffer, 0, compressedSize);
-            return trimmedBuffer;
-        }
+            int t = org.iq80.snappy.Snappy.getUncompressedLength(input, 0);
+            byte[] output = new byte[t];
 
-        @Override
-        public int maxCompressedLength(int length) {
-            return org.iq80.snappy.Snappy.maxCompressedLength(length);
+            int written = org.iq80.snappy.Snappy.uncompress(input, 0, length, output, 0);
+
+            uncompressed.writeBytes(output, 0, written);
         }
     }
 }

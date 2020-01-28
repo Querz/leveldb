@@ -18,17 +18,15 @@
 package org.iq80.leveldb.impl;
 
 import com.google.common.collect.ImmutableList;
-import org.iq80.leveldb.util.Slice;
-import org.iq80.leveldb.util.SliceOutput;
-import org.iq80.leveldb.util.Slices;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.util.List;
 
 import static com.google.common.base.Charsets.UTF_8;
@@ -52,18 +50,17 @@ public class LogTest {
 
     private LogWriter writer;
 
-    static Slice toSlice(String value) {
-        return toSlice(value, 1);
+    static ByteBuf toBuffer(String value) {
+        return toBuffer(value, 1);
     }
 
-    static Slice toSlice(String value, int times) {
+    static ByteBuf toBuffer(String value, int times) {
         byte[] bytes = value.getBytes(UTF_8);
-        Slice slice = Slices.allocate(bytes.length * times);
-        SliceOutput sliceOutput = slice.output();
+        ByteBuf buffer = Unpooled.buffer(bytes.length * times);
         for (int i = 0; i < times; i++) {
-            sliceOutput.writeBytes(bytes);
+            buffer.writeBytes(bytes);
         }
-        return slice;
+        return buffer;
     }
 
     @Test
@@ -75,19 +72,19 @@ public class LogTest {
     @Test
     public void testSmallRecord()
             throws Exception {
-        testLog(toSlice("dain sundstrom"));
+        testLog(toBuffer("dain sundstrom"));
     }
 
     @Test
     public void testMultipleSmallRecords()
             throws Exception {
-        List<Slice> records = asList(
-                toSlice("Lagunitas  Little Sumpin’ Sumpin’"),
-                toSlice("Lagunitas IPA"),
-                toSlice("Lagunitas Imperial Stout"),
-                toSlice("Oban 14"),
-                toSlice("Highland Park"),
-                toSlice("Lagavulin"));
+        List<ByteBuf> records = asList(
+                toBuffer("Lagunitas  Little Sumpin’ Sumpin’"),
+                toBuffer("Lagunitas IPA"),
+                toBuffer("Lagunitas Imperial Stout"),
+                toBuffer("Oban 14"),
+                toBuffer("Highland Park"),
+                toBuffer("Lagavulin"));
 
         testLog(records);
     }
@@ -95,19 +92,19 @@ public class LogTest {
     @Test
     public void testLargeRecord()
             throws Exception {
-        testLog(toSlice("dain sundstrom", 4000));
+        testLog(toBuffer("dain sundstrom", 4000));
     }
 
     @Test
     public void testMultipleLargeRecords()
             throws Exception {
-        List<Slice> records = asList(
-                toSlice("Lagunitas  Little Sumpin’ Sumpin’", 4000),
-                toSlice("Lagunitas IPA", 4000),
-                toSlice("Lagunitas Imperial Stout", 4000),
-                toSlice("Oban 14", 4000),
-                toSlice("Highland Park", 4000),
-                toSlice("Lagavulin", 4000));
+        List<ByteBuf> records = asList(
+                toBuffer("Lagunitas  Little Sumpin’ Sumpin’", 4000),
+                toBuffer("Lagunitas IPA", 4000),
+                toBuffer("Lagunitas Imperial Stout", 4000),
+                toBuffer("Oban 14", 4000),
+                toBuffer("Highland Park", 4000),
+                toBuffer("Lagavulin", 4000));
 
         testLog(records);
     }
@@ -115,22 +112,22 @@ public class LogTest {
     @Test
     public void testReadWithoutProperClose()
             throws Exception {
-        testLog(ImmutableList.of(toSlice("something"), toSlice("something else")), false);
+        testLog(ImmutableList.of(toBuffer("something"), toBuffer("something else")), false);
     }
 
-    private void testLog(Slice... entries)
+    private void testLog(ByteBuf... entries)
             throws IOException {
         testLog(asList(entries));
     }
 
-    private void testLog(List<Slice> records)
+    private void testLog(List<ByteBuf> records)
             throws IOException {
         testLog(records, true);
     }
 
-    private void testLog(List<Slice> records, boolean closeWriter)
+    private void testLog(List<ByteBuf> records, boolean closeWriter)
             throws IOException {
-        for (Slice entry : records) {
+        for (ByteBuf entry : records) {
             writer.addRecord(entry, false);
         }
 
@@ -140,12 +137,10 @@ public class LogTest {
 
         // test readRecord
 
-        try (FileInputStream fis = new FileInputStream(writer.getFile());
-             FileChannel fileChannel = fis.getChannel()) {
-            LogReader reader = new LogReader(fileChannel, NO_CORRUPTION_MONITOR, true, 0);
-            for (Slice expected : records) {
-                Slice actual = reader.readRecord();
-                assertEquals(actual, expected);
+        try (LogReader reader = new LogReader(writer.getPath(), NO_CORRUPTION_MONITOR, true, 0)) {
+            for (ByteBuf expected : records) {
+                ByteBuf actual = reader.readRecord();
+                NativeInteropTest.assertEquals(actual, expected);
             }
             assertNull(reader.readRecord());
         }
@@ -154,7 +149,7 @@ public class LogTest {
     @BeforeMethod
     public void setUp()
             throws Exception {
-        writer = Logs.createLogWriter(File.createTempFile("table", ".log"), 42);
+        writer = Logs.createLogWriter(Files.createTempFile("table", ".log"), 42);
     }
 
     @AfterMethod

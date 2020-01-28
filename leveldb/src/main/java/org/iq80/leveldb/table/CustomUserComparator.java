@@ -17,11 +17,12 @@
  */
 package org.iq80.leveldb.table;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.DBComparator;
-import org.iq80.leveldb.util.Slice;
+import org.iq80.leveldb.util.Buffers;
 
-public class CustomUserComparator
-        implements UserComparator {
+public class CustomUserComparator implements UserComparator {
     private final DBComparator comparator;
 
     public CustomUserComparator(DBComparator comparator) {
@@ -34,17 +35,17 @@ public class CustomUserComparator
     }
 
     @Override
-    public Slice findShortestSeparator(Slice start, Slice limit) {
-        return new Slice(comparator.findShortestSeparator(start.getBytes(), limit.getBytes()));
+    public ByteBuf findShortestSeparator(ByteBuf start, ByteBuf limit) {
+        return Unpooled.wrappedBuffer(comparator.findShortestSeparator(Buffers.getBytes(start), Buffers.getBytes(limit)));
     }
 
     @Override
-    public Slice findShortSuccessor(Slice key) {
-        return new Slice(comparator.findShortSuccessor(key.getBytes()));
+    public ByteBuf findShortSuccessor(ByteBuf key) {
+        return Unpooled.wrappedBuffer(comparator.findShortSuccessor(Buffers.getBytes(key)));
     }
 
     @Override
-    public int compare(Slice o1, Slice o2) {
-        return comparator.compare(o1.getBytes(), o2.getBytes());
+    public int compare(ByteBuf o1, ByteBuf o2) {
+        return comparator.compare(Buffers.getBytes(o1), Buffers.getBytes(o2));
     }
 }

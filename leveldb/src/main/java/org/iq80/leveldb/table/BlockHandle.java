@@ -17,6 +17,8 @@
  */
 package org.iq80.leveldb.table;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import org.iq80.leveldb.util.*;
 
 public class BlockHandle {
@@ -30,9 +32,9 @@ public class BlockHandle {
         this.dataSize = dataSize;
     }
 
-    public static BlockHandle readBlockHandle(SliceInput sliceInput) {
-        long offset = VariableLengthQuantity.readVariableLengthLong(sliceInput);
-        long size = VariableLengthQuantity.readVariableLengthLong(sliceInput);
+    public static BlockHandle readBlockHandle(ByteBuf buffer) {
+        long offset = VariableLengthQuantity.readVariableLengthLong(buffer);
+        long size = VariableLengthQuantity.readVariableLengthLong(buffer);
 
         if (size > Integer.MAX_VALUE) {
             throw new IllegalArgumentException("Blocks can not be larger than Integer.MAX_VALUE");
@@ -41,16 +43,15 @@ public class BlockHandle {
         return new BlockHandle(offset, (int) size);
     }
 
-    public static Slice writeBlockHandle(BlockHandle blockHandle) {
-        Slice slice = Slices.allocate(MAX_ENCODED_LENGTH);
-        SliceOutput sliceOutput = slice.output();
-        writeBlockHandleTo(blockHandle, sliceOutput);
-        return slice.slice();
+    public static ByteBuf writeBlockHandle(BlockHandle blockHandle) {
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.ioBuffer(MAX_ENCODED_LENGTH);
+        writeBlockHandleTo(blockHandle, buffer);
+        return buffer;
     }
 
-    public static void writeBlockHandleTo(BlockHandle blockHandle, SliceOutput sliceOutput) {
-        VariableLengthQuantity.writeVariableLengthLong(blockHandle.offset, sliceOutput);
-        VariableLengthQuantity.writeVariableLengthLong(blockHandle.dataSize, sliceOutput);
+    public static void writeBlockHandleTo(BlockHandle blockHandle, ByteBuf buffer) {
+        VariableLengthQuantity.writeVariableLengthLong(blockHandle.offset, buffer);
+        VariableLengthQuantity.writeVariableLengthLong(blockHandle.dataSize, buffer);
     }
 
     public long getOffset() {

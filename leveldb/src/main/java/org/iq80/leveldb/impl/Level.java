@@ -19,10 +19,10 @@ package org.iq80.leveldb.impl;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.table.UserComparator;
 import org.iq80.leveldb.util.InternalTableIterator;
 import org.iq80.leveldb.util.LevelIterator;
-import org.iq80.leveldb.util.Slice;
 
 import java.util.Collections;
 import java.util.Comparator;
@@ -36,8 +36,7 @@ import static org.iq80.leveldb.impl.SequenceNumber.MAX_SEQUENCE_NUMBER;
 import static org.iq80.leveldb.impl.ValueType.VALUE;
 
 // todo this class should be immutable
-public class Level
-        implements SeekingIterable<InternalKey, Slice> {
+public class Level implements SeekingIterable<InternalKey, ByteBuf> {
     private final int levelNumber;
     private final TableCache tableCache;
     private final InternalKeyComparator internalKeyComparator;
@@ -134,7 +133,7 @@ public class Level
 
             if (iterator.hasNext()) {
                 // parse the key in the block
-                Entry<InternalKey, Slice> entry = iterator.next();
+                Entry<InternalKey, ByteBuf> entry = iterator.next();
                 InternalKey internalKey = entry.getKey();
                 Preconditions.checkState(internalKey != null, "Corrupt key for %s", key.getUserKey().toString(UTF_8));
 
@@ -152,7 +151,7 @@ public class Level
         return null;
     }
 
-    public boolean someFileOverlapsRange(Slice smallestUserKey, Slice largestUserKey) {
+    public boolean someFileOverlapsRange(ByteBuf smallestUserKey, ByteBuf largestUserKey) {
         InternalKey smallestInternalKey = new InternalKey(smallestUserKey, MAX_SEQUENCE_NUMBER, VALUE);
         int index = findFile(smallestInternalKey);
 
@@ -194,11 +193,9 @@ public class Level
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Level");
-        sb.append("{levelNumber=").append(levelNumber);
-        sb.append(", files=").append(files);
-        sb.append('}');
-        return sb.toString();
+        return "Level" +
+                "(levelNumber=" + levelNumber +
+                ", files=" + files +
+                ')';
     }
 }

@@ -17,6 +17,7 @@
  */
 package org.iq80.leveldb.util;
 
+import io.netty.buffer.ByteBuf;
 import org.iq80.leveldb.impl.FileMetaData;
 import org.iq80.leveldb.impl.InternalKey;
 import org.iq80.leveldb.impl.InternalKeyComparator;
@@ -25,9 +26,7 @@ import org.iq80.leveldb.impl.TableCache;
 import java.util.List;
 import java.util.Map.Entry;
 
-public final class LevelIterator
-        extends AbstractSeekingIterator<InternalKey, Slice>
-        implements InternalIterator {
+public final class LevelIterator extends AbstractSeekingIterator<InternalKey, ByteBuf> implements InternalIterator {
     private final TableCache tableCache;
     private final List<FileMetaData> files;
     private final InternalKeyComparator comparator;
@@ -91,7 +90,7 @@ public final class LevelIterator
     }
 
     @Override
-    protected Entry<InternalKey, Slice> getNextElement() {
+    protected Entry<InternalKey, ByteBuf> getNextElement() {
         // note: it must be here & not where 'current' is assigned,
         // because otherwise we'll have called inputs.next() before throwing
         // the first NPE, and the next time around we'll call inputs.next()
@@ -128,12 +127,10 @@ public final class LevelIterator
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("ConcatenatingIterator");
-        sb.append("{index=").append(index);
-        sb.append(", files=").append(files);
-        sb.append(", current=").append(current);
-        sb.append('}');
-        return sb.toString();
+        return "ConcatenatingIterator" +
+                "(index=" + index +
+                ", files=" + files +
+                ", current=" + current +
+                ')';
     }
 }

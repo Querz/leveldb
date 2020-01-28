@@ -18,9 +18,11 @@
 package org.iq80.leveldb.table;
 
 import com.google.common.base.Preconditions;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.Unpooled;
 import org.iq80.leveldb.util.*;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -28,38 +30,36 @@ import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileChannel.MapMode;
+import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.concurrent.Callable;
 
-import static org.iq80.leveldb.CompressionType.*;
-
-public class MMapTable
-        extends Table {
+public class MMapTable extends Table {
     private MappedByteBuffer data;
 
-    public MMapTable(String name, FileChannel fileChannel, Comparator<Slice> comparator, boolean verifyChecksums)
+    public MMapTable(Path path, FileChannel fileChannel, Comparator<ByteBuf> comparator, boolean verifyChecksums)
             throws IOException {
-        super(name, fileChannel, comparator, verifyChecksums);
+        super(path, fileChannel, comparator, verifyChecksums);
         Preconditions.checkArgument(fileChannel.size() <= Integer.MAX_VALUE, "File must be smaller than %s bytes", Integer.MAX_VALUE);
     }
 
-    public static ByteBuffer read(MappedByteBuffer data, int offset, int length) {
+    public static ByteBuf read(MappedByteBuffer data, int offset, int length) {
         int newPosition = data.position() + offset;
-        return (ByteBuffer) data.duplicate().order(ByteOrder.LITTLE_ENDIAN).clear().limit(newPosition + length).position(newPosition);
+        return Unpooled.wrappedBuffer((ByteBuffer) data.duplicate().order(ByteOrder.LITTLE_ENDIAN).clear().limit(newPosition + length).position(newPosition));
     }
 
     @Override
-    protected Footer init()
-            throws IOException {
+    protected Footer init() throws IOException {
         long size = fileChannel.size();
         data = fileChannel.map(MapMode.READ_ONLY, 0, size);
-        Slice footerSlice = Slices.copiedBuffer(data, (int) size - Footer.ENCODED_LENGTH, Footer.ENCODED_LENGTH);
-        return Footer.readFooter(footerSlice);
+        ByteBuf buffer = Unpooled.wrappedBuffer(data);
+        ByteBuf footer = buffer.slice((int) size - Footer.ENCODED_LENGTH, Footer.ENCODED_LENGTH);
+        return Footer.readFooter(footer);
     }
 
     @Override
     public Callable<?> closer() {
-        return new Closer(name, fileChannel, data);
+        return new Closer(path, fileChannel, data);
     }
 
     @SuppressWarnings({"NonPrivateFieldAccessedInSynchronizedContext", "AssignmentToStaticFieldFromInstanceMethod"})
@@ -67,9 +67,8 @@ public class MMapTable
     protected Block readBlock(BlockHandle blockHandle)
             throws IOException {
         // read block trailer
-        BlockTrailer blockTrailer = BlockTrailer.readBlockTrailer(Slices.copiedBuffer(this.data,
-                (int) blockHandle.getOffset() + blockHandle.getDataSize(),
-                BlockTrailer.ENCODED_LENGTH));
+        BlockTrailer blockTrailer = BlockTrailer.readBlockTrailer(read(this.data,
+                (int) blockHandle.getOffset() + blockHandle.getDataSize(), BlockTrailer.ENCODED_LENGTH));
 
 // todo re-enable crc check when ported to support direct buffers
 //        // only verify check sums if explicitly asked by the user
@@ -83,50 +82,39 @@ public class MMapTable
 //        }
 
         // decompress data
-        Slice uncompressedData;
-        ByteBuffer uncompressedBuffer = read(this.data, (int) blockHandle.getOffset(), blockHandle.getDataSize());
-        if (blockTrailer.getCompressionType() == ZLIB_RAW) {
-            synchronized (MMapTable.class) {
-                // Shit on the scratch buffer. for it to work i would need to guess maximum uncompressed data length
-                // instead i can simply use a byte array output stream which reallocs the internal memory buffer if needed
-                ByteArrayOutputStream stream = new ByteArrayOutputStream(blockHandle.getDataSize() * 5);
-                Zlib.uncompressRaw(uncompressedBuffer, stream);
-                uncompressedData = Slices.wrappedBuffer(stream.toByteArray());
-            }
-        } else if (blockTrailer.getCompressionType() == ZLIB) {
-            synchronized (MMapTable.class) {
-                // Shit on the scratch buffer. for it to work i would need to guess maximum uncompressed data length
-                // instead i can simply use a byte array output stream which reallocs the internal memory buffer if needed
-                ByteArrayOutputStream stream = new ByteArrayOutputStream(blockHandle.getDataSize() * 5);
-                Zlib.uncompress(uncompressedBuffer, stream);
-                uncompressedData = Slices.wrappedBuffer(stream.toByteArray());
-            }
-        } else if (blockTrailer.getCompressionType() == SNAPPY) {
-            synchronized (MMapTable.class) {
-                int uncompressedLength = uncompressedLength(uncompressedBuffer);
-                if (uncompressedScratch.capacity() < uncompressedLength) {
-                    uncompressedScratch = ByteBuffer.allocateDirect(uncompressedLength);
-                }
-                uncompressedScratch.clear();
+        ByteBuf diskBuffer = read(this.data, (int) blockHandle.getOffset(), blockHandle.getDataSize());
 
-                Snappy.uncompress(uncompressedBuffer, uncompressedScratch);
-                uncompressedData = Slices.copiedBuffer(uncompressedScratch);
-            }
-        } else {
-            uncompressedData = Slices.copiedBuffer(uncompressedBuffer);
+        Compressor compressor = null;
+        switch (blockTrailer.getCompressionType()) {
+            case ZLIB:
+                compressor = Zlib.ZLIB;
+                break;
+            case ZLIB_RAW:
+                compressor = Zlib.ZLIB_RAW;
+                break;
+            case SNAPPY:
+                compressor = Snappy.COMPRESSOR;
         }
 
-        return new Block(uncompressedData, comparator);
+        ByteBuf uncompressedBuffer;
+        if (compressor != null) {
+            uncompressedBuffer = ByteBufAllocator.DEFAULT.ioBuffer();
+            compressor.decompress(diskBuffer, uncompressedBuffer);
+        } else {
+            uncompressedBuffer = diskBuffer.slice();
+        }
+
+        return new Block(uncompressedBuffer, comparator);
     }
 
     private static class Closer
             implements Callable<Void> {
-        private final String name;
+        private final Path path;
         private final Closeable closeable;
         private final MappedByteBuffer data;
 
-        public Closer(String name, Closeable closeable, MappedByteBuffer data) {
-            this.name = name;
+        public Closer(Path path, Closeable closeable, MappedByteBuffer data) {
+            this.path = path;
             this.closeable = closeable;
             this.data = data;
         }
