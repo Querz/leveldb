@@ -17,13 +17,16 @@
  */
 package org.iq80.leveldb.impl;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.*;
 import org.iq80.leveldb.util.DynamicSliceOutput;
 import org.iq80.leveldb.util.Slice;
 import org.iq80.leveldb.util.SliceInput;
 import org.iq80.leveldb.util.VariableLengthQuantity;
 
+import java.io.File;
 import java.util.Map;
+import java.util.Objects;
 
 public class VersionEdit {
     private final Map<Integer, InternalKey> compactPointers = Maps.newTreeMap();
@@ -35,10 +38,15 @@ public class VersionEdit {
     private Long previousLogNumber;
     private Long lastSequenceNumber;
 
-    public VersionEdit() {
+    public final File databaseDir;
+
+    public VersionEdit(File databaseDir) {
+        this.databaseDir = Objects.requireNonNull(databaseDir, "databaseDir");
     }
 
-    public VersionEdit(Slice slice) {
+    public VersionEdit(Slice slice, File databaseDir) {
+        this(databaseDir);
+
         SliceInput sliceInput = slice.input();
         while (sliceInput.isReadable()) {
             int i = VariableLengthQuantity.readVariableLengthInt(sliceInput);
@@ -110,7 +118,9 @@ public class VersionEdit {
                         long fileSize,
                         InternalKey smallest,
                         InternalKey largest) {
-        FileMetaData fileMetaData = new FileMetaData(fileNumber, fileSize, smallest, largest);
+        File file = new File(this.databaseDir, Filename.tableFileName(fileNumber));
+        Preconditions.checkState(file.isFile(), file.getAbsolutePath());
+        FileMetaData fileMetaData = new FileMetaData(fileNumber, file.length(), smallest, largest);
         addFile(level, fileMetaData);
     }
 

@@ -100,7 +100,7 @@ public class VersionSet
         File currentFile = new File(databaseDir, Filename.currentFileName());
 
         if (!currentFile.exists()) {
-            VersionEdit edit = new VersionEdit();
+            VersionEdit edit = new VersionEdit(this.databaseDir);
             edit.setComparatorName(internalKeyComparator.name());
             edit.setLogNumber(prevLogNumber);
             edit.setNextFileNumber(nextFileNumber.get());
@@ -294,7 +294,7 @@ public class VersionSet
     private void writeSnapshot(LogWriter log)
             throws IOException {
         // Save metadata
-        VersionEdit edit = new VersionEdit();
+        VersionEdit edit = new VersionEdit(this.databaseDir);
         edit.setComparatorName(internalKeyComparator.name());
 
         // Save compaction pointers
@@ -332,7 +332,7 @@ public class VersionSet
             LogReader reader = new LogReader(fileChannel, throwExceptionMonitor(), true, 0);
             for (Slice record = reader.readRecord(); record != null; record = reader.readRecord()) {
                 // read version edit
-                VersionEdit edit = new VersionEdit(record);
+                VersionEdit edit = new VersionEdit(record, this.databaseDir);
 
                 // verify comparator
                 // todo implement user comparator
@@ -613,6 +613,10 @@ public class VersionSet
             }
         }
         return result;
+    }
+
+    public File getDatabaseDir() {
+        return this.databaseDir;
     }
 
     /**
