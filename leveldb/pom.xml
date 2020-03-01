@@ -6,12 +6,11 @@
     <parent>
         <groupId>org.iq80.leveldb</groupId>
         <artifactId>leveldb-project</artifactId>
-        <version>0.11-SNAPSHOT</version>
+        <version>0.11.1-SNAPSHOT</version>
     </parent>
 
     <artifactId>leveldb</artifactId>
     <name>${project.artifactId}</name>
-    <version>0.11.1-SNAPSHOT</version>
     <description>Port of LevelDB to Java</description>
 
     <properties>
@@ -23,7 +22,6 @@
         <dependency>
             <groupId>org.iq80.leveldb</groupId>
             <artifactId>leveldb-api</artifactId>
-            <version>0.11-SNAPSHOT</version>
         </dependency>
 
         <dependency>
