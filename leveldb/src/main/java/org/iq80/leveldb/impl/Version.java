@@ -296,4 +296,8 @@ public class Version
     public boolean isDisposed() {
         return retained.get() <= 0;
     }
+
+    public VersionSet getVersionSet() {
+        return this.versionSet;
+    }
 }

@@ -174,7 +174,7 @@ public class DbImpl
             }
 
             // Recover in the order in which the logs were generated
-            VersionEdit edit = new VersionEdit();
+            VersionEdit edit = new VersionEdit(this.databaseDir);
             Collections.sort(logs);
             for (Long fileNumber : logs) {
                 long maxSequence = recoverLogFile(fileNumber, edit);
@@ -829,7 +829,7 @@ public class DbImpl
 
         try {
             // Save the contents of the memtable as a new Table
-            VersionEdit edit = new VersionEdit();
+            VersionEdit edit = new VersionEdit(this.databaseDir);
             Version base = versions.getCurrent();
             writeLevel0Table(immutableMemTable, edit, base);
 

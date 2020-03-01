@@ -38,7 +38,7 @@ public class Compaction {
     private final List<FileMetaData>[] inputs;
 
     private final long maxOutputFileSize;
-    private final VersionEdit edit = new VersionEdit();
+    private final VersionEdit edit;
 
     // State used to check for number of of overlapping grandparent files
     // (parent == level_ + 1, grandparent == level_ + 2)
@@ -64,6 +64,7 @@ public class Compaction {
         this.grandparents = grandparents;
         this.maxOutputFileSize = VersionSet.maxFileSizeForLevel(level);
         this.inputs = new List[]{levelInputs, levelUpInputs};
+        this.edit = new VersionEdit(this.inputVersion.getVersionSet().getDatabaseDir());
     }
 
     public static long totalFileSize(List<FileMetaData> files) {
