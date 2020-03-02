@@ -119,8 +119,7 @@ public class VersionEdit {
                         InternalKey smallest,
                         InternalKey largest) {
         File file = new File(this.databaseDir, Filename.tableFileName(fileNumber));
-        Preconditions.checkState(file.isFile(), file.getAbsolutePath());
-        FileMetaData fileMetaData = new FileMetaData(fileNumber, file.length(), smallest, largest);
+        FileMetaData fileMetaData = new FileMetaData(fileNumber, file.isFile() ? file.length() : fileSize, smallest, largest);
         addFile(level, fileMetaData);
     }
 
