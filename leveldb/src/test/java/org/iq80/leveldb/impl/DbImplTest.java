@@ -788,7 +788,6 @@ public class DbImplTest {
         File databaseFile = new File(databaseDir + "/imafile");
         assertTrue(databaseFile.createNewFile());
         new DbStringWrapper(new Options(), databaseFile);
-        new sun.misc.Cache();
     }
 
     @Test
